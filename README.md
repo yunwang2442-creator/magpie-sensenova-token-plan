@@ -173,6 +173,8 @@ bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模�
 | "没有找到 Microsoft Edge 或 Chrome" | 装 Edge，或设 `MAGPIE_SENSENOVA_BROWSER=C:\path\to\msedge.exe`，或在插件 options 里写 `"browser": "…"` |
 | 登录窗口不弹 | 看 magpie 日志里 `[sensenova]` 开头的行（`client.app.log`） |
 | 浏览器里登录完成但 magpie 说超时 | 登录预算 8 分钟（可 `options.loginTimeoutMs` 调大）；中途关窗会立即失败 |
+| 登录成功但提示自动创建 API Key 失败 | 账号可能已有 20 个 Key；去控制台删一个，或改用“仅 API Key”。错误里会带 IAM 的原始说明 |
+| 自动创建的 Key 没通过校验 | 控制台看自动创建的那个 magpie Key 是否启用；或改用“仅 API Key” |
 | "API Key 被拒绝" | 粘贴不完整，或这个 Key 不属于 Token Plan；控制台重新生成 |
 | 额度显示"控制台会话已失效" | 令牌被平台吊销——重新登录一次 |
 | 换电脑后账号报解密失败 | DPAPI 按用户/机器绑定，重新登录即可 |
