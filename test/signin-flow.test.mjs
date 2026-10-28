@@ -9,7 +9,10 @@
  */
 
 import assert from "node:assert/strict";
+import { hostname } from "node:os";
 import { mock } from "bun:test";
+
+import { keyFingerprint } from "../lib/protocol.mjs";
 
 const TOKEN_URL = "https://platform.sensenova.cn/oauth2/token";
 const POOL_URL = "https://platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage";
@@ -52,6 +55,7 @@ const POOL_FIXTURE = {
 };
 
 let calls = [];
+let keyList = [];
 let quotaStatus = 200;
 let tokenResponse = null; // 覆盖换码/续期的响应
 
@@ -74,7 +78,7 @@ globalThis.fetch = async (url, init = {}) => {
       return jsonRes({ api_key_plain: "sk-created", id: "key-1", displayname: body.displayname, key_type: body.key_type });
     }
     if (init.method === "DELETE") return new Response("", { status: 204 });
-    return jsonRes({ api_keys: [], total_count: 1 });
+    return jsonRes({ api_keys: keyList, total_count: keyList.length || 1 });
   }
   if (u === TOKEN_URL) {
     if (tokenResponse) return tokenResponse;
@@ -138,7 +142,7 @@ await check("callback：换码 + 自动创建 API Key，三件凭据全部密封
   const keyPost = calls.find((c) => c.url.includes("/metered/api-keys") && c.init.method === "POST");
   assert.ok(keyPost, "浏览器登录应自动创建 Token Plan API Key");
   const body = JSON.parse(String(keyPost.init.body));
-  assert.match(body.displayname, /^magpie-/);
+  assert.match(body.displayname, /^magpie-[0-9a-f]{4}-/);
   assert.equal(body.key_type, "API_KEY_TYPE_TOKEN_PLAN");
 
   // 模拟 magpie 的 save()：oauth 记录 = {type, refresh, access, expires, ...extra}
@@ -166,9 +170,29 @@ await check("api 方法：只校验/密封 Key，不打开浏览器", async () =
 
 await check("provider.models：活清单替换兜底（不打 fellBack 标记）", async () => {
   const list = await plugin.provider.models({ models: {} }, { auth: record });
-  assert.deepEqual(Object.keys(list).sort(), ["glm-5.2", "sensenova-6.8-flash-lite"]);
+  assert.deepEqual(Object.keys(list).sort(), ["glm-5.2", "sensenova-6.8-flash-lite", "sensenova-u1.5-lite"]);
   assert.equal(list[Symbol.for("magpie.fellBack")], undefined);
   assert.equal(list["glm-5.2"].providerID, "sensenova");
+});
+
+await check("key lifecycle：prune_old_keys 只删旧的同机 magpie- Key", async () => {
+  const tag = keyFingerprint(hostname()).slice(0, 4);
+  keyList = [
+    { id: "old3", displayname: `magpie-${tag}-old3`, create_time: "2026-10-28T00:00:00Z" },
+    { id: "old2", displayname: `magpie-${tag}-old2`, create_time: "2026-10-28T01:00:00Z" },
+    { id: "old1", displayname: `magpie-${tag}-old1`, create_time: "2026-10-28T02:00:00Z" },
+  ];
+  const prunePlugin = await SenseNovaPlugin({
+    client: { app: { log: () => {} } },
+    magpie: { option: (_id, key) => key === "prune_old_keys" },
+  });
+  const result = await prunePlugin.auth.methods[0].authorize().then((s) => s.callback());
+  assert.equal(result.type, "success");
+  const deletes = calls.filter((c) => c.init.method === "DELETE" && c.url.includes("/metered/api-keys/"));
+  assert.ok(deletes.some((c) => c.url.endsWith("/old3")), "old3 should be deleted");
+  assert.ok(!deletes.some((c) => c.url.endsWith("/old2")), "old2 should be kept");
+  assert.ok(!deletes.some((c) => c.url.endsWith("/old1")), "old1 should be kept");
+  keyList = [];
 });
 
 await check("usage：带控制台令牌读额度、映射窗口，并命中 60 秒缓存", async () => {

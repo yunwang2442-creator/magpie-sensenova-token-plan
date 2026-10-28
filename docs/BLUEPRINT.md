@@ -1,6 +1,13 @@
 # magpie-sensenova 蓝图
 
-> 状态：v0.6.0 已完成（私有仓库）：P0/P1 审计修复 + 额度合计 / Key 清理 / 形状自检脚本；自动 Key 生命周期与发布物料仍待做。
+> 状态：v0.7.0 已完成（私有仓库）：P0/P1 审计修复 + 图像生成模型 + 额度合计 / Key 清理 / 形状自检脚本；自动 Key 生命周期与发布物料仍待做。
+
+## 0. 当前进度（v0.7.0）
+
+- **已完成**：模型目录（聊天 + 图像）、额度语义、按账号模型缓存、协议 variants、稳定账号身份、keyless、浏览器登录 `url:""`、403 kept、Key 清理脚本、额度合计脚本、形状自检。
+- **现在能做**：`try.ps1` 沙箱、自动 Key prune（需先决定是否开启）、host-scoped Key 名、18/20 警告。
+- **上游阻塞**：自定义额度页——`PageReads` 只有 `usage:summary` / `providers:list`，没有 `usage:quotas`；跨账号合计先用 `scripts/quota-total.mjs`。
+- **发布前**：`private`/`files`/NOTICE/第三方署名、英文 README、CI、npm/topic。
 
 ## 1. 一句话目标
 
@@ -34,14 +41,14 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 | 官网名称 | Model ID | Chat | 输入 | 输出 | 上下文 | 最大输出 | 备注 |
 |---|---|---|---|---|---|---|---|
 | SenseNova 6.8 Flash Lite | `sensenova-6.8-flash-lite` | ✅ | 文本、图片 | 文本 | 262,144 | 65,536 | 轻量多模态 |
-| SenseNova U1.5 Lite | `sensenova-u1.5-lite` | ❌ | 文本、参考图 | 图片 | 262,144 | — | 图像生成/编辑，不走 chat |
-| SenseNova U1.5 Fast | `sensenova-u1.5-fast` | ❌ | 文本、参考图 | 图片 | — | — | 图像生成加速版 |
+| SenseNova U1.5 Lite | `sensenova-u1.5-lite` | ❌ / Drawer ✅ | 文本、参考图 | 图片 | 262,144 | 65,536 | 图像生成/编辑，magpie Drawers 走 `/v1/images/*` |
+| SenseNova U1.5 Fast | `sensenova-u1.5-fast` | ❌ / Drawer ✅ | 文本、参考图 | 图片 | 262,144 | 65,536 | 图像生成加速版 |
 | DeepSeek V4 Flash | `deepseek-v4-flash` | ✅ | 文本 | 文本 | 1,048,576 | 65,536 | V4 Flash 0731 |
 | DeepSeek V4.1 Flash | `deepseek-flash` | ✅ | 文本、图片、视频（仅 Chat） | 文本 | 1,048,576 | 65,536 | V4.1 Flash 1017；你启用的就是这个 |
 | GLM-5.2 | `glm-5.2` | ✅ | 文本 | 文本 | 1,048,576 | 131,072 | 长程 Coding |
 | Kimi K3 | `kimi-k3` | ✅ | 文本、图片 | 文本 | 1,048,576 | 65,536 | 429 重灾区 |
 
-**不进入 chat 目录的**：`sensenova-u1.5-lite`、`sensenova-u1.5-fast`（图像输出），`deepseek-v4.1-flash`（`/models` 杂项，实际 403）。
+**不进入 chat 目录的**：`sensenova-u1.5-lite`、`sensenova-u1.5-fast`（图像输出，但会出现在 magpie 的 Image generation 选择器），`deepseek-v4.1-flash`（`/models` 杂项，实际 403）。
 
 ## 5. 额度口径
 
@@ -99,7 +106,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 
 ## 8. 非目标
 
-- 不做图像生成（magpie 的 chat provider 不服务 `/v1/images/generations`）。
+- 不重写 magpie 的 Draws 逻辑：插件只把 U1.5 列进目录，`/v1/images/generations` 和 `/v1/images/edits` 的转发交给 magpie。
 - 不做多账号额度合并显示（magpie 的限制；留给上游或后续页面）。
 - 不进 `magpie-community/registry`（除非以后决定公开并接受社区维护）。
 - 不在插件内做 429 重试或自定义路由策略。

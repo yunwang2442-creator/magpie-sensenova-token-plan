@@ -18,7 +18,7 @@ import {
   usernameFromTokens,
 } from "../lib/protocol.mjs";
 import { compact, flexNum, toUsage } from "../lib/quota.mjs";
-import { chatModels, createCatalog, extractModels, fellBack, normalizeModel, toConfigModel, toProviderModel } from "../lib/models.mjs";
+import { catalogModels, chatModels, createCatalog, extractModels, fellBack, isImageModel, normalizeModel, toConfigModel, toProviderModel } from "../lib/models.mjs";
 import { isSealed, seal, unseal } from "../lib/dpapi.mjs";
 import { SenseNovaPlugin } from "../index.mjs";
 
@@ -297,6 +297,12 @@ test("模型目录：官网骨架 + /models 覆盖 + 过滤图像/杂项", () =>
     ["deepseek-flash", "glm-5.2", "kimi-k3"],
     "图像模型和 deepseek-v4.1-flash 不应进入 Chat 目录",
   );
+  assert.deepEqual(
+    catalogModels(live).map((m) => m.id).sort(),
+    ["deepseek-flash", "glm-5.2", "kimi-k3", "sensenova-u1.5-lite"],
+    "provider 目录要保留图像模型，供 Drawers 使用",
+  );
+  assert.equal(isImageModel(normalizeModel({ id: "sensenova-u1.5-lite", output_modalities: ["image"] })), true);
 
   const full = toProviderModel(flash, "sensenova");
   assert.equal(full.capabilities.input.video, true);
@@ -425,6 +431,7 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
   assert.equal(typeof plugin.auth.refresh, "function");
   assert.equal(plugin.auth.refreshLead, 15 * 60 * 1000);
   assert.equal(plugin.auth.maxConcurrency, 1);
+  assert.equal(plugin.auth.options?.[0]?.key, "prune_old_keys");
   assert.equal(plugin.auth.methods.length, 2);
   assert.equal(plugin.auth.methods[0].type, "oauth");
   assert.equal(plugin.auth.methods[0].prompts, undefined, "浏览器登录不应先问 API Key");
@@ -446,13 +453,20 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
     "glm-5.2",
     "kimi-k3",
     "sensenova-6.8-flash-lite",
+    "sensenova-u1.5-fast",
+    "sensenova-u1.5-lite",
   ]);
-  assert.ok(!declared.includes("sensenova-u1.5-lite"), "图像模型不进入 Chat 目录");
+  assert.equal(
+    cfg.provider.sensenova.models["sensenova-u1.5-lite"].modalities.output[0],
+    "image",
+    "U1.5 作为图像模型声明，供 magpie Drawers 使用",
+  );
   assert.ok(!declared.includes("deepseek-v4.1-flash"), "403 的杂项 id 不进入目录");
 
   const list = await plugin.provider.models(cfg.provider.sensenova, {});
   assert.equal(list[Symbol.for("magpie.fellBack")], true);
-  assert.equal(Object.keys(list).length, 5);
+  assert.equal(Object.keys(list).length, 7);
+  assert.equal(list["sensenova-u1.5-lite"].modalities.output[0], "image");
 });
 
 test("插件：protocol 选项切换 wire API，并在非 chat 时隐藏视频", async () => {

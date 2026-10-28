@@ -25,6 +25,8 @@
  * @module magpie-sensenova
  */
 
+import { hostname } from "node:os";
+
 import { startLoginCapture } from "./lib/browser.mjs";
 import { seal, unseal } from "./lib/dpapi.mjs";
 import { createPkce } from "./lib/pkce.mjs";
@@ -43,7 +45,7 @@ import {
   probeApiKey,
   refreshTokens,
 } from "./lib/protocol.mjs";
-import { FALLBACK_MODELS, NPM, chatModels, createCatalog, fellBack, toConfigModel, toProviderModel } from "./lib/models.mjs";
+import { FALLBACK_MODELS, NPM, catalogModels, createCatalog, fellBack, toConfigModel, toProviderModel } from "./lib/models.mjs";
 import { toUsage } from "./lib/quota.mjs";
 
 const PROVIDER = "sensenova";
@@ -72,7 +74,10 @@ const lifetimeOf = (expiresIn) =>
 /** Token Plan 每个账号最多 20 个 API Key（官网 Free 档）。 */
 const KEY_LIMIT = 20;
 
-/** 自动创建的 Key 名：magpie-<账号>-<时间>-<随机>，满足控制台的命名规则。 */
+/** 本机短标识：让多台机器上的 magpie- Key 能分开清理。 */
+const HOST_TAG = keyFingerprint(hostname()).slice(0, 4);
+
+/** 自动创建的 Key 名：magpie-<机器>-<账号>-<时间>-<随机>，满足控制台的命名规则。 */
 const keyNameFor = (username) => {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
   const who = String(username || "account")
@@ -80,7 +85,7 @@ const keyNameFor = (username) => {
     .replace(/-+/g, "-")
     .slice(0, 24);
   const rand = Math.random().toString(16).slice(2, 6);
-  return `magpie-${who}-${stamp}-${rand}`.slice(0, 64);
+  return `magpie-${HOST_TAG}-${who}-${stamp}-${rand}`.slice(0, 64);
 };
 
 /**
@@ -92,7 +97,7 @@ const keyNameFor = (username) => {
  *   - browser：指定浏览器可执行文件路径（同 MAGPIE_SENSENOVA_BROWSER）
  *   - quotaTtlMs / loginTimeoutMs：覆盖缓存时长 / 登录预算
  */
-export async function SenseNovaPlugin({ client } = {}, options = {}) {
+export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
   const baseURL =
     typeof options.baseURL === "string" && options.baseURL.trim()
       ? options.baseURL.trim().replace(/\/+$/, "")
@@ -134,6 +139,17 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
     return normalizeApiKey(raw);
   };
 
+  /** magpie 的 provider 级布尔开关；OpenCode 没有 magpie 时回退到 options。 */
+  const optionOn = (key) => {
+    try {
+      if (magpie?.option?.(PROVIDER, key) === true) return true;
+    } catch {
+      /* 旧宿主没有这个 API */
+    }
+    return options?.[key] === true;
+  };
+  const pruneOldKeys = optionOn("prune_old_keys");
+
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   /**
@@ -158,7 +174,35 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
 
   /** 登录前/拉取失败时声明的模型（拿过活清单后就用活清单里的聊天模型播种）。 */
   const seedModels = () => catalog.peek() ?? FALLBACK_MODELS;
-  const declareModels = () => Object.fromEntries(chatModels(seedModels()).map((m) => [m.id, toConfigModel(m, wire)]));
+  /**
+   * 自动清理同机器、同账号的旧 magpie- Key。
+   * 默认关闭；auth.options 的 prune_old_keys 打开才跑。
+   * 保留最新 2 个（含刚创建的），绝不动手动 Key。
+   */
+  const pruneKeys = async (access, keyName) => {
+    try {
+      const listed = await listApiKeys(access, { pageSize: 20 });
+      const at = (value) => {
+        const n = Date.parse(String(value ?? ""));
+        return Number.isFinite(n) ? n : 0;
+      };
+      const keys = (listed.api_keys ?? []).slice().sort((a, b) => at(b.create_time) - at(a.create_time));
+      const prefix = `magpie-${HOST_TAG}-`;
+      const ours = keys.filter((k) => String(k.displayname ?? "").startsWith(prefix));
+      if (!ours.length) return;
+      const keep = new Set(ours.slice(0, 2).map((k) => k.id));
+      const fresh = ours.find((k) => k.displayname === keyName);
+      if (fresh?.id) keep.add(fresh.id);
+      for (const k of ours) {
+        if (keep.has(k.id)) continue;
+        await deleteApiKey(access, k.id).catch((e) => log("warn", `sensenova: 清理旧 Key 失败（${e?.message ?? e}）`));
+      }
+    } catch (e) {
+      log("warn", `sensenova: 自动清理旧 Key 跳过（${e?.message ?? e}）`);
+    }
+  };
+
+  const declareModels = () => Object.fromEntries(catalogModels(seedModels()).map((m) => [m.id, toConfigModel(m, wire)]));
 
   return {
     /** 声明供应商与模型（登录之前也要让供应商可选中）。 */
@@ -191,7 +235,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
         }
         if (!apiKey) return fellBack(declared);
         try {
-          const live = chatModels(await catalog.load(apiKey));
+          const live = catalogModels(await catalog.load(apiKey));
           if (!live.length) return fellBack(declared);
           return Object.fromEntries(live.map((m) => [m.id, toProviderModel(m, PROVIDER, { baseURL, ...wire })]));
         } catch (e) {
@@ -205,6 +249,17 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
       provider: PROVIDER,
       /** 每个账号的并发上限；用户/provider 级别的设置会覆盖它。 */
       maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+
+      /** provider 设置页里的布尔开关（magpie 0.1.1876+；OpenCode 忽略）。 */
+      options: [
+        {
+          key: "prune_old_keys",
+          label: "自动清理旧 magpie API Key",
+          description:
+            "浏览器登录成功后，只保留最新 2 个同机器的 magpie- Key；手动创建的 Key 不会删。默认关闭。",
+          confirm: "会在登录成功后删除同机器旧的 magpie- Key，保留最新 2 个。",
+        },
+      ],
 
       /** 到期前 15 分钟续期（令牌轮换，magpie 负责调度与并发去重）。 */
       refreshLead: DEFAULT_REFRESH_LEAD_MS,
@@ -263,6 +318,9 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                       err.code = "key_limit";
                       throw err;
                     }
+                    if (total >= KEY_LIMIT - 2) {
+                      log("warn", `sensenova: 该账号已有 ${total}/${KEY_LIMIT} 个 API Key，快满了`);
+                    }
                   } catch (e) {
                     if (e?.code === "key_limit") throw e;
                     log("warn", `sensenova: 读取 API Key 数量失败（${e?.message ?? e}），继续创建`);
@@ -301,6 +359,8 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                     }
                     log("warn", `sensenova: 新 Key 校验没做完（${e?.message ?? e}）`);
                   }
+
+                  if (pruneOldKeys) await pruneKeys(access, keyName);
 
                   return {
                     type: "success",

@@ -2,6 +2,21 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.7.0] - 2026-10-29
+
+### 新增
+
+- **图像生成**：`sensenova-u1.5-lite` / `sensenova-u1.5-fast` 进入 provider 目录（不进入 Chat），magpie 的 Image generation picker 会列出它们；`/v1/images/generations` 和 `/v1/images/edits` 由 magpie Drawers 转发，插件只提供 Key/base。
+- **Key 生命周期自动开关**：`auth.options` 增加 `prune_old_keys`（默认关闭，provider 设置页可开）；打开后登录成功只保留最新 2 个同机器 `magpie-*` Key，手动 Key 不动。
+- **Key 名带机器短标识**：`magpie-<host>-<账号>-<时间>-<随机>`，多机器不会互相清。
+- **18/20 警告**：账号接近 20 个 Key 时日志提示。
+- **`scripts/try.ps1` 沙箱**：隔离 `HOME`/`APPDATA`/`LOCALAPPDATA`/`XDG_*`，在临时配置里 `plugin add` + `plugin`，不碰日常 magpie；复用已下载 Bun，不重复下载。
+
+### 修复
+
+- 模型目录现在同时包含聊天与图像模型；`provider.models` 在登录前 7 个、登录后按 live 清单（当前 6 个，U1.5 Fast 不在 live）。
+- 测试更新：22 单测 + 11 端到端 + 3 烟测；新增按账号 Key 清理测试。
+
 ## [0.6.0] - 2026-10-29
 
 ### 新增

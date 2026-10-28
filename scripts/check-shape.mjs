@@ -52,14 +52,15 @@ const provider = cfg.provider?.sensenova;
 expect(provider?.name === "SenseNova", "config provider.name");
 expect(provider?.npm === "@ai-sdk/openai-compatible", "config provider.npm");
 expect(typeof provider?.api === "string" && provider.api.startsWith("https://"), "config provider.api");
-expect(provider?.models && Object.keys(provider.models).length === 5, "config 5 个聊天模型");
+expect(provider?.models && Object.keys(provider.models).length === 7, "config 7 个模型（5 聊天 + 2 图像）");
 expect(provider?.models?.["sensenova-6.8-flash-lite"], "config 含 6.8 flash-lite");
-expect(!provider?.models?.["sensenova-u1.5-lite"], "config 不含图像模型");
+expect(provider?.models?.["sensenova-u1.5-lite"]?.modalities.output[0] === "image", "config 含 U1.5 图像模型");
 expect(!provider?.models?.["deepseek-v4.1-flash"], "config 不含 403 杂项");
 
 const listed = await plugin.provider.models(provider, {});
 expect(listed?.[Symbol.for("magpie.fellBack")] === true, "无 auth 时 provider.models 打 fellBack");
-expect(Object.keys(listed ?? {}).length === 5, "无 auth 时仍声明 5 个模型");
+expect(Object.keys(listed ?? {}).length === 7, "无 auth 时仍声明 7 个模型");
+expect(listed?.["sensenova-u1.5-lite"]?.modalities?.output?.[0] === "image", "U1.5 输出 image");
 
 if (problems.length) {
   console.error(`✗ ${problems.length} 个问题`);

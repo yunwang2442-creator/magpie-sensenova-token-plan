@@ -49,9 +49,9 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 | GLM-5.2 | `glm-5.2` | ✅ | 文本 | 文本 | 1,048,576 | 131,072 |
 | Kimi K3 | `kimi-k3` | ✅ | 文本、图片 | 文本 | 1,048,576 | 65,536 |
 
-**不进入 Chat 目录的模型**：
+**图像生成模型**：
 
-- `sensenova-u1.5-lite` / `sensenova-u1.5-fast`：图像生成/编辑模型，只走 `/v1/images/*`，magpie 的 chat provider 不服务这些端点。
+- `sensenova-u1.5-lite` / `sensenova-u1.5-fast`：不进入 Chat 目录，但会出现在 magpie 的 **Settings → Models → Image generation** 里；走 `/v1/images/generations` 和 `/v1/images/edits`，由 magpie 的 Drawers 自动处理和转发，插件只提供 Key/base。
 - `deepseek-v4.1-flash`：`/v1/models` 会返回这个 id，但实际请求返回 403（`model is not available in the current token plan`），已从目录过滤。
 
 > `deepseek-flash` 就是 DeepSeek V4.1 Flash 1017 版；不要被 id 里的 “flash” 误导。
@@ -59,6 +59,10 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 > 输出上限：DeepSeek 两个模型用 **实测的 `max_tokens` 合法上界**（2026-10-29：`should be in [1, 393216]` / `[1, 384000]`），不是 `/models` 的 65,536；Kimi 因 429 未测，保持 65,536。这里说的是“请求能开到多大”，不是“模型一定生成这么长”。
 
 **推理档位**：Chat 发 `reasoningEffort`；Anthropic 发 `thinking` + `output_config.effort`；Responses 只保留 `none`（该兼容端点忽略其他档位）。`sensenova-6.8-flash-lite` 额外有 `medium`，其余模型是 `none/low/high/max`。
+
+### 图像生成
+
+在 **Settings → Models → Image generation** 选 `sensenova/sensenova-u1.5-lite`（或 `u1.5-fast`），然后走 `/v1/images/generations` 或 `/v1/images/edits`。magpie 会自动把编辑请求转成 SenseNova 要的 JSON `images:[{image_url:"data:..."}]`，并在生成时请求 `b64_json`；插件不需要单独的图像代码。
 
 ## 安装
 
@@ -119,6 +123,8 @@ bun scripts/key-gc.mjs --apply  # 删除旧的 magpie-*，保留最新 2 个
 ```
 
 脚本只删 `magpie-*`，永远保护当前账号正在用的 Key，也不会碰你手动创建的 `Key`。**默认 dry-run**；多机器使用同一账号时先看清单再 `--apply`。
+
+想让它自动跑：在 provider 设置页打开 **“自动清理旧 magpie API Key”**（`auth.options` 的 `prune_old_keys`，默认关闭）。打开后浏览器登录成功会保留最新 2 个同机器 `magpie-*`；手动 `Key` 不动。旧版本留下的无机器前缀的 Key 仍用上面的脚本清。
 
 ## 429：先看边界
 
@@ -187,6 +193,9 @@ bun scripts/quota-total.mjs               # 5 个账号按窗口合计（调用 
 bun scripts/quota-total.mjs --json        # 机器可读
 bun scripts/key-gc.mjs                    # Key 清理预览（默认不删）
 bun scripts/key-gc.mjs --apply            # 真删：保留最新 2 个 magpie-*，保护当前 Key
+
+pwsh -File scripts/try.ps1                 # Windows 沙箱：隔离配置加载插件，不碰日常 magpie
+pwsh -File scripts/try.ps1 -Clean          # 同上，结束删除沙箱
 ```
 
 ## 排错
@@ -231,6 +240,7 @@ scripts/login-test.mjs 独立登录自测
 scripts/check-shape.mjs 不联网的 hook 形状自检
 scripts/quota-total.mjs 多账号额度合计
 scripts/key-gc.mjs      Token Plan Key 清理（默认 dry-run）
+scripts/try.ps1         Windows 沙箱加载插件
 test/unit.test.mjs     离线单测
 test/signin-flow.test.mjs  端到端签入（打桩浏览器与网络）
 test/smoke-capture.mjs 浏览器截停留烟测（本地回环，不联网）
