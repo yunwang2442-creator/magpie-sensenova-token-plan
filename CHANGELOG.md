@@ -2,6 +2,13 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.4.1] - 2026-10-29
+
+### 修复
+
+- 浏览器启动时移除 `__COMPAT_LAYER` / `COMPAT_LAYER` / `CHROME_HEADLESS` / `ELECTRON_RUN_AS_NODE`，避免 Edge 在 magpie GUI 宿主里走 `--edge-skip-compat-layer-relaunch` 重启、丢失 `DevToolsActivePort`，窗口停在 `about:blank`。
+- 调试端口启动失败时给出明确原因（管理员/兼容模式）和“仅 API Key”退路。
+
 ## [0.4.0] - 2026-10-28
 
 ### 修复
