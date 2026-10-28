@@ -100,10 +100,10 @@ magpie plugin add "<path-to-this-folder>"
 4. **加一个路由组**：让 Kimi 失败后落到 DeepSeek：
 
 ```bash
-magpie group add coding --model sensenova/kimi-k3 --fallback sensenova/deepseek-flash
+magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 ```
 
-（具体命令以你本机 `magpie group --help` 为准；核心是“同 provider 内按模型降级”。）
+`models=` 的顺序就是尝试顺序；routing 用你惯用的策略（`magpie group --help` 里有 `routing=` 的说明）。核心是“同 provider 内按模型降级”，不是把插件改成自动重试。
 
 插件**不会**在内部重试 429：那会阻塞 magpie 的换号/换模型。插件只提供 `auth.maxConcurrency: 1` 这个安全默认值；`maxRPM` 是 magpie 的 provider 设置，请在 provider 里改。
 
@@ -114,11 +114,10 @@ magpie group add coding --model sensenova/kimi-k3 --fallback sensenova/deepseek-
   - 只有**当前 Windows 用户**能解开；拷走 `plugin-auth.json` 到别的机器/用户都解不开；
   - 换机器或换 Windows 用户后，账号需要重新登录一次（这是特性，不是 bug）。
 - 登录用的一次性浏览器实例：独立临时 profile（`%TEMP%` 下），与日常浏览器完全隔离，收尾时整个目录删除。浏览器自身的后台联网也关了（`--disable-background-networking` / `--disable-component-update` / `--disable-sync` / `--disable-default-apps` / `--no-service-autorun` / `--disable-breakpad` / `--no-pings`）。
-- 插件自身只与三个厂商域名通信：
+- 插件当前只与两个厂商域名通信：
   - `platform.sensenova.cn`：授权、令牌、额度；
-  - `token.sensenova.cn`：模型；
-  - `iam.sensecoreapi.cn`：仅在“自动建 API Key”功能启用时使用（当前版本未实现）。
-  没有统计、没有遥测、没有第三方地址；日志不打印令牌（只打状态码与厂商给的错误描述）。
+  - `token.sensenova.cn`：模型。
+  未来的“自动建 API Key”功能会用到 `iam.sensecoreapi.cn`，当前版本未实现。没有统计、没有遥测、没有第三方地址；日志不打印令牌（只打状态码与厂商给的错误描述）。
 - **非 Windows 平台（未适配）**：DPAPI 不存在，凭据会**明文落盘**。目标平台目前是 Windows；macOS Keychain 在路线图里。
 - 日志只出现在 magpie 自己的日志里，不写文件、不打印令牌。
 - 额度端点 `pool-usage` 是控制台前端自用的、未公开的接口；平台改版可能让它失效，也可能触发风控。模型调用不受影响。
