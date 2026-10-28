@@ -1,6 +1,6 @@
 # magpie-sensenova 蓝图
 
-> 状态：v0.2.0 已完成（私有仓库）；P2 未开始。本文记录目标、边界、阶段和已定决策。
+> 状态：v0.3.0 已完成（私有仓库）：仅 API Key 登录 + 协议切换；自动建 Key 未做。
 
 ## 1. 一句话目标
 
@@ -69,12 +69,12 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - 429：`auth.maxConcurrency: 1` 默认；README 写清上游限制；给 Kimi → DeepSeek 路由组示例
 - 出口：5 个账号真实登录 + `magpie quota` 正确；`provider models` 只列 5 个聊天模型
 
-### P2 体验 → v0.3.0
+### P2 体验 → v0.3.0（已完成大部分）
 
-- 新增 `api` 方法（只粘贴 Key，不读额度）
-- 可选“一键登录自动建 Key”（默认关；`POST /iam/idp/v1/apiKeys`，key 名 `magpie-日期`）
-- `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`
-- 中英双语提示与 README
+- [x] 新增 `api` 方法（只粘贴 Key，不读额度；Key 同样 DPAPI 密封）
+- [x] `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`
+- [ ] 可选“一键登录自动建 Key”（默认关；`POST /iam/idp/v1/apiKeys`，key 名 `magpie-日期`）
+- [ ] 中英双语提示与 README
 - 出口：新账号 30 秒内完成登录；老账号不受影响
 
 ### P3 发布 → v1.0.0

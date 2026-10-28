@@ -43,6 +43,13 @@ import { toUsage } from "./lib/quota.mjs";
 
 const PROVIDER = "sensenova";
 
+/** 三种 wire 协议；只有 chat 支持视频。 */
+const PROTOCOLS = {
+  chat: { npm: NPM, video: true },
+  anthropic: { npm: "@ai-sdk/anthropic", video: false },
+  responses: { npm: "@ai-sdk/openai", video: false },
+};
+
 /** 额度读取的缓存时长：60 秒内重复读不重新打接口（magpie 会频繁刷新额度）。 */
 const DEFAULT_QUOTA_TTL_MS = 60_000;
 /** 到期前 15 分钟续期（与 exe 的 renew_ahead_min=15 一致）。 */
@@ -80,6 +87,8 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
     Number.isFinite(Number(options.loginTimeoutMs)) && Number(options.loginTimeoutMs) > 0
       ? Number(options.loginTimeoutMs)
       : DEFAULT_LOGIN_TIMEOUT_MS;
+  const protocol = Object.hasOwn(PROTOCOLS, options.protocol) ? options.protocol : "chat";
+  const wire = PROTOCOLS[protocol];
 
   const catalog = createCatalog({ baseURL });
   const quotaCache = new Map(); // 密封的 access_token → { at, value }（续期后 key 变化，自动失效）
@@ -108,7 +117,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
 
   /** 登录前/拉取失败时声明的模型（拿过活清单后就用活清单里的聊天模型播种）。 */
   const seedModels = () => catalog.peek() ?? FALLBACK_MODELS;
-  const declareModels = () => Object.fromEntries(chatModels(seedModels()).map((m) => [m.id, toConfigModel(m)]));
+  const declareModels = () => Object.fromEntries(chatModels(seedModels()).map((m) => [m.id, toConfigModel(m, wire)]));
 
   return {
     /** 声明供应商与模型（登录之前也要让供应商可选中）。 */
@@ -117,7 +126,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
       const was = cfg.provider[PROVIDER] ?? {};
       cfg.provider[PROVIDER] = {
         name: "SenseNova",
-        npm: NPM,
+        npm: wire.npm,
         api: baseURL,
         ...was,
         models: { ...declareModels(), ...(was.models ?? {}) },
@@ -143,7 +152,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
         try {
           const live = chatModels(await catalog.load(apiKey));
           if (!live.length) return fellBack(declared);
-          return Object.fromEntries(live.map((m) => [m.id, toProviderModel(m, PROVIDER, { baseURL })]));
+          return Object.fromEntries(live.map((m) => [m.id, toProviderModel(m, PROVIDER, { baseURL, ...wire })]));
         } catch (e) {
           log("warn", `sensenova: 保留声明的模型清单（${e?.message ?? e}）`);
           return fellBack(declared);

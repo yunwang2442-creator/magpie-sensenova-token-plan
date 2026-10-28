@@ -27,6 +27,16 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 
 如果以后要接 Claude Code / Codex 的原生协议，可以加 `protocol` 选项；但切到那两种协议后**视频输入不可用**。
 
+### 协议选项
+
+默认 `chat`。需要原生协议时，在 `plugins.json` 的 `options` 里设置：
+
+```json
+{ "protocol": "anthropic" }
+```
+
+或 `"responses"`。非 `chat` 协议下，插件会自动从 `deepseek-flash` 的输入能力里移除 `video`；图片输入仍然保留（Anthropic / Responses 都支持图片）。Responses 是无状态兼容，不支持 `previous_response_id`、内置工具和 `input_file`。
+
 ## 模型清单
 
 内置目录以[官网文档](https://platform.sensenova.cn/docs)为准；`GET /v1/models` 只用来覆盖上下文、输出上限、价格和描述。两者冲突时：**能力看文档，上限看接口**。
@@ -172,6 +182,7 @@ bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模�
 ```json
 {
   "baseURL": "https://token.sensenova.cn/v1",
+  "protocol": "chat",
   "browser": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "quotaTtlMs": 60000,
   "loginTimeoutMs": 480000

@@ -2,6 +2,14 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.3.0] - 2026-10-28
+
+### 新增
+
+- **`protocol` 选项**：`chat`（默认）/ `anthropic` / `responses`，在 `plugins.json` 的 `options` 里切换 wire API。
+- 非 `chat` 协议自动隐藏 `deepseek-flash` 的视频输入能力（Anthropic / Responses 不支持视频），图片输入保留。
+- README 增加协议选项、Responses 无状态限制、视频能力说明。
+
 ## [0.2.1] - 2026-10-28
 
 ### 新增

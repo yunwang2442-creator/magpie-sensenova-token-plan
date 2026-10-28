@@ -275,6 +275,13 @@ test("模型目录：官网骨架 + /models 覆盖 + 过滤图像/杂项", () =>
   const full = toProviderModel(flash, "sensenova");
   assert.equal(full.capabilities.input.video, true);
   assert.deepEqual(Object.keys(full.variants).sort(), ["high", "low", "max", "none"]);
+
+  const noVideo = toProviderModel(flash, "sensenova", { video: false });
+  assert.equal(noVideo.capabilities.input.video, false, "非 Chat 协议不应声明视频");
+  assert.equal(
+    toProviderModel(flash, "sensenova", { npm: "@ai-sdk/anthropic" }).api.npm,
+    "@ai-sdk/anthropic",
+  );
 });
 
 /* -------------------------------------------------- DPAPI（需要 bun） */
@@ -384,6 +391,22 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
   const list = await plugin.provider.models(cfg.provider.sensenova, {});
   assert.equal(list[Symbol.for("magpie.fellBack")], true);
   assert.equal(Object.keys(list).length, 5);
+});
+
+test("插件：protocol 选项切换 wire API，并在非 chat 时隐藏视频", async () => {
+  const anth = await SenseNovaPlugin({}, { protocol: "anthropic" });
+  const cfg = {};
+  await anth.config(cfg);
+  assert.equal(cfg.provider.sensenova.npm, "@ai-sdk/anthropic");
+  assert.equal(cfg.provider.sensenova.models["deepseek-flash"].modalities.input.includes("video"), false);
+  const list = await anth.provider.models(cfg.provider.sensenova, {});
+  assert.equal(list["deepseek-flash"].modalities.input.includes("video"), false);
+
+  const chat = await SenseNovaPlugin({}, {});
+  const cfgChat = {};
+  await chat.config(cfgChat);
+  assert.equal(cfgChat.provider.sensenova.npm, "@ai-sdk/openai-compatible");
+  assert.equal(cfgChat.provider.sensenova.models["deepseek-flash"].modalities.input.includes("video"), true);
 });
 
 test("插件：loader 解封 API Key；缺凭据的 usage / refresh 报需要重登", async () => {
