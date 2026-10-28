@@ -76,13 +76,17 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - 429：`auth.maxConcurrency: 1` 默认；README 写清上游限制；给 Kimi → DeepSeek 路由组示例
 - 出口：5 个账号真实登录 + `magpie quota` 正确；`provider models` 只列 5 个聊天模型
 
-### P2 体验 → v0.3.0（已完成大部分）
+### P2 体验 → v0.7.0（已完成）
 
-- [x] 新增 `api` 方法（只粘贴 Key，不读额度；Key 同样 DPAPI 密封）
-- [x] `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`
-- [x] “一键登录自动建 Key”：浏览器登录 → `POST /lite/console/v1/metered/api-keys`（`key_type=API_KEY_TYPE_TOKEN_PLAN`，key 名以 magpie- 开头）→ 等待 3–10 秒生效 → `GET /v1/models` 校验
-- [ ] 中英双语提示与 README
-- 出口：新账号 30 秒内完成登录；老账号不受影响
+- [x] 新增 `api` 方法（只粘贴 Key，不读额度；Key 同样 DPAPI 密封；`keyless` 避免二次输入）
+- [x] `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`，按协议生成 variants
+- [x] “一键登录自动建 Key”：浏览器登录 → `POST /lite/console/v1/metered/api-keys`（`key_type=API_KEY_TYPE_TOKEN_PLAN`）→ 等待 3–10 秒生效 → `GET /v1/models` 校验
+- [x] 图像生成：U1.5 Lite/Fast 进入 provider 目录，magpie Drawers 走 `/v1/images/*`
+- [x] Key 生命周期：`scripts/key-gc.mjs`（默认 dry-run）+ `auth.options.prune_old_keys`（默认关闭，打开后保留最新 2 个同机 Key）
+- [x] 跨账号额度合计：`scripts/quota-total.mjs`
+- [x] 形状自检：`scripts/check-shape.mjs`
+- [x] Windows 沙箱：`scripts/try.ps1`
+- [ ] 中英双语提示与 README（发布前再做）
 
 ### P3 发布 → v1.0.0
 
@@ -92,9 +96,10 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 
 ### P4 平台（后续）
 
-- macOS Keychain
+- macOS Keychain（不用 Mac 就保持 Windows-only 声明）
 - 按账号学习不可用模型（403 / `insufficient_quota` 后隐藏）
-- 多账号额度聚合页，或把 `upstream-issue-draft.md` 提交给 magpie
+- 多账号额度页：**当前被 magpie 阻塞**——`PageReads` 只有 `usage:summary` / `providers:list`，没有 `usage:quotas`；先用 `scripts/quota-total.mjs`，或把 `upstream-issue-draft.md` 提交给 magpie
+- 发布物料：i18n、CI、`magpie-plugin` topic、npm、脱敏（公开前）
 
 ## 7. 429 的边界
 
@@ -119,6 +124,6 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - [ ] `package.json` 的 `private` 按“私有/公开”状态决定
 - [ ] LICENSE、CHANGELOG、`.gitignore` 齐全
 - [ ] 5 个账号 `magpie quota` 显示正确
-- [ ] 只列 5 个聊天模型；图像模型不出现在 chat 目录
+- [ ] 聊天 5 个 + 图像 2 个；图像模型不出现在 chat 目录，但出现在 Image generation picker
 - [ ] `auth.maxConcurrency` 生效
 - [ ] 公开时：`magpie-plugin` topic + npm 包名不冲突
