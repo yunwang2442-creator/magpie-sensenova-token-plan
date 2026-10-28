@@ -36,11 +36,12 @@ import {
   deleteApiKey,
   exchangeCode,
   fetchPoolUsage,
+  identityFromTokens,
+  keyFingerprint,
   listApiKeys,
   normalizeApiKey,
   probeApiKey,
   refreshTokens,
-  usernameFromTokens,
 } from "./lib/protocol.mjs";
 import { FALLBACK_MODELS, NPM, chatModels, createCatalog, fellBack, toConfigModel, toProviderModel } from "./lib/models.mjs";
 import { toUsage } from "./lib/quota.mjs";
@@ -106,7 +107,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
       ? Number(options.loginTimeoutMs)
       : DEFAULT_LOGIN_TIMEOUT_MS;
   const protocol = Object.hasOwn(PROTOCOLS, options.protocol) ? options.protocol : "chat";
-  const wire = PROTOCOLS[protocol];
+  const wire = { ...PROTOCOLS[protocol], protocol };
 
   const catalog = createCatalog({ baseURL });
   const quotaCache = new Map(); // 密封的 access_token → { at, value }（续期后 key 变化，自动失效）
@@ -218,7 +219,8 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
            * 商汤的 redirect_uri 固定是 https://platform.sensenova.cn（控制台 SPA），
            * 不能改成 localhost（实测 IAM 直接 404 invalid_request）。所以这里由插件
            * 用受控浏览器截停回跳，并返回 opened: true 告诉 magpie "页面已经开了，
-           * 不要再开第二个"；url 仍然返回，供界面显示链接。
+           * 不要再开第二个"；url 返回空串，避免 GUI 的 "Open again" 链接把 code
+           * 交给控制台 SPA。
            */
           async authorize() {
             const pkce = createPkce();
@@ -232,7 +234,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
             });
 
             return {
-              url: authorizeUrl,
+              url: "",
               opened: true,
               instructions:
                 "已打开一个独立的登录窗口（一次性环境，不碰你日常浏览器的登录态，也不留任何登录数据）。" +
@@ -248,7 +250,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                   }
                   const access = tokens.access_token ?? "";
                   if (!access) throw new Error("token 响应里没有 access_token");
-                  const username = usernameFromTokens(tokens);
+                  const { username, uid } = identityFromTokens(tokens);
 
                   // 先看 Key 数量；到 20 个就明确告诉用户，不要白创建再失败
                   try {
@@ -302,7 +304,10 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
 
                   return {
                     type: "success",
-                    accountId: username || "SenseNova",
+                    // 稳定身份：username 优先，其次 JWT sub；两者都没有才用 refresh 指纹。
+                    // 不要写死 "SenseNova"：5 个账号会被 settle() 当成同一个而互相覆盖。
+                    accountId: username || uid || `sensenova-${keyFingerprint(tokens.refresh_token)}`,
+                    uid,
                     username,
                     // 三件凭据一律先 DPAPI 密封再交给 magpie 落盘
                     refresh: await seal(tokens.refresh_token),
@@ -322,6 +327,8 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
         {
           type: "api",
           label: "仅 API Key（模型可用，不读额度）",
+          // authorize 自己收并返回 Key；不声明 keyless 的话 GUI 会再弹一个标准 Key 输入框。
+          keyless: true,
           prompts: [
             {
               type: "password",
@@ -352,7 +359,14 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
               }
               log("warn", `sensenova: API Key 预检没做完（${e?.message ?? e}），继续保存`);
             }
-            return { type: "success", key: await seal(apiKey) };
+            const note = typeof inputs?.email === "string" ? inputs.email.trim() : "";
+            return {
+              type: "success",
+              key: await seal(apiKey),
+              // api 方法的 accountId 会被 host 丢弃；账号行只读 metadata.email。
+              // 没填备注时用 Key 指纹，保证同一个 Key 重登不会变成新账号。
+              metadata: { email: note || `key:${keyFingerprint(apiKey)}` },
+            };
           },
         },
       ],
@@ -399,10 +413,13 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
           quotaCache.set(cacheKey, { at: Date.now(), value });
           return value;
         } catch (e) {
-          if (e?.status === 401 || e?.status === 403) {
+          // 只有明确的 401 才是登录失效；403 可能是 WAF/地区/权限，
+          // 标成 expired 会让账号被路由直接跳过，范围太宽。
+          if (e?.status === 401) {
             return { error: "控制台会话已失效，请重新登录", signIn: "expired" };
           }
-          return { error: `读取额度失败：${e?.message ?? e}` };
+          const detail = String(e?.message ?? e).slice(0, 300);
+          return { error: `读取额度失败：${detail}`, signIn: "kept" };
         }
       },
 
@@ -422,8 +439,9 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
 
         try {
           const tokens = await refreshTokens(refreshToken);
+          if (!tokens?.access_token) throw new Error("续期响应里没有 access_token");
           return {
-            access: await seal(tokens.access_token ?? ""),
+            access: await seal(tokens.access_token),
             // Hydra 轮换 refresh_token：响应里的是新的，必须覆盖
             refresh: await seal(tokens.refresh_token || refreshToken),
             expires: Date.now() + lifetimeOf(tokens.expires_in),

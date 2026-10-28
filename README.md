@@ -56,6 +56,8 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 
 > `deepseek-flash` 就是 DeepSeek V4.1 Flash 1017 版；不要被 id 里的 “flash” 误导。
 
+**推理档位**：Chat 发 `reasoningEffort`；Anthropic 发 `thinking` + `output_config.effort`；Responses 只保留 `none`（该兼容端点忽略其他档位）。`sensenova-6.8-flash-lite` 额外有 `medium`，其余模型是 `none/low/high/max`。
+
 ## 安装
 
 ```bash
@@ -76,12 +78,14 @@ magpie plugin add "<path-to-this-folder>"
 2. 在里面正常登录（密码 / 短信验证码都可以）；
 3. 登录成功后，插件用控制台令牌自动创建一个以 `magpie-` 开头的 **Token Plan API Key**，等它生效（通常 3–10 秒）并校验，然后关闭窗口；账号出现在列表里，额度随即显示。
 
+> 这个一次性窗口是**唯一入口**：插件返回 `url` 为空 + `opened: true`，magpie 不会再给 “Open again” 链接。不要再用别的浏览器打开授权页——code 会被控制台 SPA 消费，受控窗口反而拿不到。
+
 > 每个账号最多 20 个 API Key。自动创建会新增一个；如果已到上限，插件会提示你先去控制台删除一个，或改用“仅 API Key”方式。重新登录也会新增一个 Key；想复用已有 Key 就用方式二。
 
 ### 方式二：仅 API Key（模型可用，不读额度）
 
-1. 粘贴 **Token Plan API Key**；
-2. 可选填一个账号备注（手机号 / 邮箱），用来区分多账号；
+1. 粘贴 **Token Plan API Key**（只会问一次：方法声明了 `keyless`，host 不会再弹第二个标准 Key 框）；
+2. 可选填一个账号备注（手机号 / 邮箱），用来区分多账号；留空时用 Key 指纹，重登不会变成新账号；
 3. 保存后模型立即可用，但账号卡片不会显示额度——因为没有控制台令牌。
 
 这条路径适合：只用 OpenCode / 不关心额度、或者控制台 OAuth 临时不可用时先保证模型能跑。Key 同样在落盘前经 DPAPI 密封；额度端点不会被访问。
@@ -97,9 +101,9 @@ magpie plugin add "<path-to-this-folder>"
 | 通用积分池 · 5 小时 | span 18000s | 当前 120,000 分 / 滚动 5 小时 |
 | 通用积分池 · 周 | span 604800s | 当前 1,200,000 分 / 滚动 7 天 |
 | Flash-Lite 积分池 · 5 小时 / 周 | 同上，且限定 `flash-lite` 模型 | 官网写 60,000 / 600,000；本机接口可能返回 120,000 / 1,200,000 |
-| 活动积分（`grant_balance`） | `balance` | 带到期时间的那部分赠送积分 |
+| 活动积分（`grant_balance`） | `balance` + 钱包窗口 | 带到期时间的那部分赠送积分；有 `nearest_grant_expiry` 时额外给 `runsOutAt/runsOut` |
 
-**额度不写死**：插件只显示 `pool-usage` 返回的 `limit` / `remaining` / `reset_at`。官网文档和接口可能不一致（尤其是 Flash-Lite 专属池），以你的账号接口为准。
+**额度不写死**：插件只显示 `pool-usage` 返回的 `limit` / `used` / `remaining` / `reset_at`。优先用 `used`，缺失时用 `limit - remaining`；两者都没有就**跳过该窗口**，不伪造 0（否则会被误读成 100% 已用）。官网文档和接口可能不一致（尤其是 Flash-Lite 专属池），以你的账号接口为准。
 
 额度读取有 60 秒缓存（magpie 会频繁刷新额度行，不必每次都打接口）。
 

@@ -30,7 +30,7 @@ const jwt = (payload) => `header.${b64(payload)}.sig`;
 const jsonRes = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const ACCESS_JWT = jwt({ ext: { username: "wy-test" } });
+const ACCESS_JWT = jwt({ ext: { username: "wy-test" }, sub: "uid-1" });
 const POOL_FIXTURE = {
   code: 0,
   data: {
@@ -113,9 +113,9 @@ const check = async (name, fn) => {
 
 let record = null;
 
-await check("authorize：返回浏览器 URL + opened，先登录再自动建 Key", async () => {
+await check("authorize：不返回链接 + opened，先登录再自动建 Key", async () => {
   const s = await plugin.auth.methods[0].authorize();
-  assert.ok(s.url.startsWith("https://platform.sensenova.cn/oauth2/auth?"), "url 必须是授权页");
+  assert.equal(s.url, "", "url 必须为空：GUI 的 Open again 会把 code 交给 SPA");
   assert.equal(s.opened, true, "插件自己开了浏览器，告诉 magpie 不要再开");
   assert.equal(s.method, "auto");
   assert.equal(typeof s.callback, "function");
@@ -126,6 +126,7 @@ await check("callback：换码 + 自动创建 API Key，三件凭据全部密封
   const result = await plugin.auth.methods[0].authorize().then((s) => s.callback());
   assert.equal(result.type, "success");
   assert.equal(result.accountId, "wy-test");
+  assert.equal(result.uid, "uid-1");
   assert.equal(result.username, "wy-test");
   assert.equal(await unseal(result.refresh), "RT-1");
   assert.equal(await unseal(result.access), ACCESS_JWT);
@@ -156,6 +157,11 @@ await check("api 方法：只校验/密封 Key，不打开浏览器", async () =
   assert.equal(s.type, "success");
   assert.equal(await unseal(s.key), "sk-api");
   assert.ok(s.key === "sk-api" || s.key.startsWith("dpapi:"), "Windows 上应密封");
+  assert.equal(s.metadata.email, "note", "账号备注要落进 metadata.email");
+
+  const noNote = await plugin.auth.methods[1].authorize({ apiKey: "sk-api" });
+  assert.match(noNote.metadata.email, /^key:[0-9a-f]{12}$/, "没填备注时用稳定 Key 指纹");
+  assert.equal(noNote.metadata.email, (await plugin.auth.methods[1].authorize({ apiKey: "sk-api" })).metadata.email);
 });
 
 await check("provider.models：活清单替换兜底（不打 fellBack 标记）", async () => {
@@ -171,7 +177,7 @@ await check("usage：带控制台令牌读额度、映射窗口，并命中 60 �
   assert.equal(usage.user, "wy-test");
   assert.equal(usage.balance, "24,506.96 积分");
   assert.equal(usage.windows.length, 3);
-  assert.equal(usage.windows[0].display, "已用 18,000 / 120,000");
+  assert.equal(usage.windows[0].display, "18,000 / 120,000");
   assert.equal(usage.windows[2].model, "flash-lite");
   const quotaCalls = calls.filter((c) => c.url.includes("pool-usage"));
   assert.equal(quotaCalls.length, 1);
@@ -188,6 +194,15 @@ await check("usage：401 标记为需要重新登录", async () => {
   const usage = await freshPlugin.auth.usage(async () => record);
   assert.equal(usage.signIn, "expired");
   assert.match(usage.error, /重新登录/);
+  quotaStatus = 200;
+});
+
+await check("usage：403 不标过期，只报错 kept", async () => {
+  quotaStatus = 403;
+  const freshPlugin = await SenseNovaPlugin({}, {});
+  const usage = await freshPlugin.auth.usage(async () => record);
+  assert.equal(usage.signIn, "kept");
+  assert.match(usage.error, /读取额度失败/);
   quotaStatus = 200;
 });
 

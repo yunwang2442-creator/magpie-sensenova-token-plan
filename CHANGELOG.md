@@ -2,6 +2,21 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.5.0] - 2026-10-29
+
+### 修复
+
+- **仅 API Key 方法声明 `keyless: true`**：host 不再弹第二个标准 Key 输入框；备注写入 `metadata.email`，留空时用 Key 指纹，重登不会变成新账号。
+- **稳定账号身份**：OAuth 返回 JWT `sub` 作为 `uid`；`accountId` 不再写死 `"SenseNova"`，避免 5 个账号被 `settle()` 当成同一个互相覆盖。
+- **额度未知不再伪装成 0**：优先 `used`，其次 `limit - remaining`；两者都缺失时跳过窗口；负 `remaining` 允许 >100% 超支；活动积分的 `nearest_grant_expiry` / `nearest_grant_expiring_balance` 映射成钱包窗口的 `runsOutAt/runsOut`。
+- **模型目录按账号分桶缓存**：A 账号的 `/models` 不再给 B 账号用 6 小时；同账号并发只发一次；失败保留上次成功清单；空清单 30 秒负缓存。
+- **推理档位带实际参数**：Chat 发 `reasoningEffort`；Anthropic 发 `thinking/output_config`；Responses 只保留 `none`；每个模型有自己的 `efforts`。
+- **浏览器登录返回 `url: ""` + `opened: true`**：避免 GUI 的 “Open again” 链接把 code 交给控制台 SPA。
+- **403 不再标记为掉登录**：只有 401 标 `expired`；403/5xx 返回 `signIn: "kept"`。
+- **续期校验 `access_token`**：响应缺 access_token 时明确失败，不保存空凭据。
+- `rmdir` 路径加引号，避免用户名/临时目录含空格时清理失败。
+- 新增/更新 21 个单测 + 10 个端到端测试；覆盖分账号缓存、used/remaining、负数超支、钱包窗口、keyless、403 kept。
+
 ## [0.4.2] - 2026-10-29
 
 ### 修复

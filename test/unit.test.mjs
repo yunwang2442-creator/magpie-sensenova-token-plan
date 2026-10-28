@@ -18,7 +18,7 @@ import {
   usernameFromTokens,
 } from "../lib/protocol.mjs";
 import { compact, flexNum, toUsage } from "../lib/quota.mjs";
-import { chatModels, extractModels, fellBack, normalizeModel, toConfigModel, toProviderModel } from "../lib/models.mjs";
+import { chatModels, createCatalog, extractModels, fellBack, normalizeModel, toConfigModel, toProviderModel } from "../lib/models.mjs";
 import { isSealed, seal, unseal } from "../lib/dpapi.mjs";
 import { SenseNovaPlugin } from "../index.mjs";
 
@@ -146,13 +146,13 @@ test("额度映射：两个池 × 两个窗口，专属池限定 flash-lite", ()
   const usage = toUsage(POOL_USAGE_FIXTURE, { username: "test-user" });
   assert.equal(usage.user, "test-user");
   assert.equal(usage.balance, "24,506.96 积分");
-  assert.equal(usage.windows.length, 4);
+  assert.equal(usage.windows.length, 5); // 4 个滚动窗口 + 1 个活动积分钱包
 
-  const [g5, g7, f5, f7] = usage.windows;
+  const [g5, g7, f5, f7, wallet] = usage.windows;
   assert.equal(g5.name, "通用积分池 · 5 小时窗口");
   assert.equal(g5.span, 18000);
   assert.equal(g5.resetsAt, 1788595830); // 秒——magpie 会 ×1000
-  assert.equal(g5.display, "已用 0 / 120,000");
+  assert.equal(g5.display, "0 / 120,000");
   assert.equal(g5.model, undefined);
   assert.equal(g5.unit, "积分");
 
@@ -165,6 +165,32 @@ test("额度映射：两个池 × 两个窗口，专属池限定 flash-lite", ()
   assert.equal(f7.model, "flash-lite");
   assert.equal(f5.limit, 60000);
   assert.equal(f5.amount, 0);
+
+  assert.equal(wallet.name, "活动积分");
+  assert.equal(wallet.balance, 24506.9624);
+  assert.equal(wallet.runsOutAt, 1791122400);
+  assert.equal(wallet.runsOut, 748.834);
+});
+
+test("额度映射：used 优先、remaining 缺失不伪造 0、负数允许超支", () => {
+  const usedOnly = toUsage({
+    pools: [{ name: "x", pool_type: "default", window_5h: { limit: "100", used: "25" } }],
+  });
+  assert.equal(usedOnly.windows[0].amount, 25);
+  assert.equal(usedOnly.windows[0].used, 25);
+
+  // remaining 为空：跳过，不要变成 100% 已用
+  assert.throws(
+    () => toUsage({ pools: [{ name: "x", pool_type: "default", window_5h: { limit: "100", remaining: "" } }] }),
+    /没有可识别的窗口/,
+  );
+
+  // remaining 为负：允许 >100% 的超支
+  const overspent = toUsage({
+    pools: [{ name: "x", pool_type: "default", window_5h: { limit: "100", remaining: "-25" } }],
+  });
+  assert.equal(overspent.windows[0].amount, 125);
+  assert.equal(overspent.windows[0].used, 125);
 });
 
 test("额度映射：顶层 pools、model_ids 与缺字段的宽容", () => {
@@ -275,6 +301,16 @@ test("模型目录：官网骨架 + /models 覆盖 + 过滤图像/杂项", () =>
   const full = toProviderModel(flash, "sensenova");
   assert.equal(full.capabilities.input.video, true);
   assert.deepEqual(Object.keys(full.variants).sort(), ["high", "low", "max", "none"]);
+  assert.equal(full.variants.low.reasoningEffort, "low", "Chat variant 要带实际 reasoningEffort");
+
+  const anth = toProviderModel(flash, "sensenova", { protocol: "anthropic", video: false });
+  assert.equal(anth.variants.low.thinking.type, "enabled");
+  assert.equal(anth.variants.low.output_config.effort, "low");
+  assert.equal(anth.variants.none.thinking.type, "disabled");
+
+  const resp = toProviderModel(flash, "sensenova", { protocol: "responses", video: false });
+  assert.deepEqual(Object.keys(resp.variants), ["none"]);
+  assert.equal(resp.variants.none.reasoningEffort, "none");
 
   const noVideo = toProviderModel(flash, "sensenova", { video: false });
   assert.equal(noVideo.capabilities.input.video, false, "非 Chat 协议不应声明视频");
@@ -282,6 +318,25 @@ test("模型目录：官网骨架 + /models 覆盖 + 过滤图像/杂项", () =>
     toProviderModel(flash, "sensenova", { npm: "@ai-sdk/anthropic" }).api.npm,
     "@ai-sdk/anthropic",
   );
+});
+
+test("模型目录：按账号分桶缓存，A 的清单不会给 B", async () => {
+  const calls = [];
+  const catalog = createCatalog({
+    fetchImpl: async (url, init) => {
+      const auth = init.headers.Authorization;
+      calls.push(auth);
+      const id = auth === "Bearer A" ? "glm-5.2" : "kimi-k3";
+      return new Response(JSON.stringify({ data: [{ id }] }), { status: 200 });
+    },
+  });
+  const a = await catalog.load("A");
+  const b = await catalog.load("B");
+  assert.equal(a[0].id, "glm-5.2");
+  assert.equal(b[0].id, "kimi-k3");
+  assert.equal(calls.length, 2, "两个账号应各发一次请求");
+  await catalog.load("A");
+  assert.equal(calls.length, 2, "同一账号应命中自己的缓存");
 });
 
 /* -------------------------------------------------- DPAPI（需要 bun） */
@@ -369,6 +424,7 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
   assert.equal(plugin.auth.methods[0].prompts, undefined, "浏览器登录不应先问 API Key");
   assert.equal(typeof plugin.auth.methods[0].authorize, "function");
   assert.equal(plugin.auth.methods[1].type, "api");
+  assert.equal(plugin.auth.methods[1].keyless, true);
   assert.equal(plugin.auth.methods[1].prompts[0].key, "apiKey");
   assert.equal(typeof plugin.auth.methods[1].authorize, "function");
 
