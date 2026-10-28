@@ -1,6 +1,6 @@
 # magpie-sensenova 蓝图
 
-> 状态：v0.3.0 已完成（私有仓库）：仅 API Key 登录 + 协议切换；自动建 Key 未做。
+> 状态：v0.4.0 已完成（私有仓库）：浏览器登录自动建 Key + 仅 API Key + 协议切换。
 
 ## 1. 一句话目标
 
@@ -73,7 +73,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 
 - [x] 新增 `api` 方法（只粘贴 Key，不读额度；Key 同样 DPAPI 密封）
 - [x] `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`
-- [ ] 可选“一键登录自动建 Key”（默认关；`POST /iam/idp/v1/apiKeys`，key 名 `magpie-日期`）
+- [x] “一键登录自动建 Key”：浏览器登录 → `POST /iam/idp/v1/apiKeys`（key 名以 magpie- 开头）→ `GET /v1/models` 校验
 - [ ] 中英双语提示与 README
 - 出口：新账号 30 秒内完成登录；老账号不受影响
 

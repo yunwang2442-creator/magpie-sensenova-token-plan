@@ -366,7 +366,7 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
   assert.equal(plugin.auth.maxConcurrency, 1);
   assert.equal(plugin.auth.methods.length, 2);
   assert.equal(plugin.auth.methods[0].type, "oauth");
-  assert.equal(plugin.auth.methods[0].prompts[0].key, "apiKey");
+  assert.equal(plugin.auth.methods[0].prompts, undefined, "浏览器登录不应先问 API Key");
   assert.equal(typeof plugin.auth.methods[0].authorize, "function");
   assert.equal(plugin.auth.methods[1].type, "api");
   assert.equal(plugin.auth.methods[1].prompts[0].key, "apiKey");

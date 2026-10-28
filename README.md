@@ -70,11 +70,13 @@ magpie plugin add "<path-to-this-folder>"
 
 供应商列表里点 **SenseNova → 登录**，有两种方式：
 
-### 方式一：浏览器登录（额度 + 模型）
+### 方式一：浏览器登录（额度 + 模型，自动创建 API Key）
 
-1. 粘贴 **Token Plan API Key**（控制台 → API Keys → 新建）。插件会先验证它；
-2. 自动弹出一个**一次性浏览器窗口**——在里面正常登录（密码 / 短信验证码都可以）；
-3. 登录成功窗口自动关闭，账号出现在列表里，额度随即显示。
+1. 选择后**直接弹出**一个一次性浏览器窗口——不再先问 API Key；
+2. 在里面正常登录（密码 / 短信验证码都可以）；
+3. 登录成功后，插件用控制台令牌自动创建一个名为 `magpie-…` 的 API Key，校验它，然后关闭窗口；账号出现在列表里，额度随即显示。
+
+> 每个账号最多 20 个 API Key。自动创建会新增一个；如果已到上限，插件会提示你先去控制台删除一个，或改用“仅 API Key”方式。重新登录也会新增一个 Key；想复用已有 Key 就用方式二。
 
 ### 方式二：仅 API Key（模型可用，不读额度）
 
@@ -130,6 +132,7 @@ magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 ## 凭据与安全
 
 - **不存账号密码**。浏览器登录是你和商汤之间的直连，插件不接触密码。
+- **浏览器登录会在你的账号里创建一个 API Key**（名字以 `magpie-` 开头），只用来给 magpie 发模型请求；创建后立即用 `GET /v1/models` 校验，失败会明确报错。不想让它创建 Key，就用“仅 API Key”方式。
 - `refresh_token` / `access_token` / API Key 落盘前经 **Windows DPAPI**（`CryptProtectData`）密封，形状是 `dpapi:<base64>`：
   - 只有**当前 Windows 用户**能解开；拷走 `plugin-auth.json` 到别的机器/用户都解不开；
   - 换机器或换 Windows 用户后，账号需要重新登录一次（这是特性，不是 bug）。

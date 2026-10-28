@@ -31,8 +31,11 @@ import { createPkce } from "./lib/pkce.mjs";
 import {
   BASE_URL,
   buildAuthorizeUrl,
+  createApiKey,
+  createdApiKey,
   exchangeCode,
   fetchPoolUsage,
+  listApiKeys,
   normalizeApiKey,
   probeApiKey,
   refreshTokens,
@@ -63,6 +66,20 @@ const DEFAULT_MAX_CONCURRENCY = 1;
 
 const lifetimeOf = (expiresIn) =>
   Number.isFinite(Number(expiresIn)) && Number(expiresIn) > 0 ? Number(expiresIn) * 1000 : FALLBACK_TOKEN_LIFETIME_MS;
+
+/** Token Plan 每个账号最多 20 个 API Key（官网 Free 档）。 */
+const KEY_LIMIT = 20;
+
+/** 自动创建的 Key 名：magpie-<账号>-<时间>-<随机>，满足控制台的命名规则。 */
+const keyNameFor = (username) => {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+  const who = String(username || "account")
+    .replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 24);
+  const rand = Math.random().toString(16).slice(2, 6);
+  return `magpie-${who}-${stamp}-${rand}`.slice(0, 64);
+};
 
 /**
  * 构建插件。
@@ -171,43 +188,20 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
       methods: [
         {
           type: "oauth",
-          label: "浏览器登录 SenseNova（额度 + 模型）",
-          prompts: [
-            {
-              type: "password",
-              key: "apiKey",
-              message: "Token Plan API Key（控制台 → API-Key 管理）",
-              placeholder: "sk-…",
-              validate: (value) =>
-                normalizeApiKey(value) ? null : "API Key 不能为空：没有它这个账号无法发起模型请求",
-            },
-          ],
-
+          label: "浏览器登录 SenseNova（自动创建 API Key）",
           /**
-           * 打开受控登录窗口并等回调。
+           * 官方插件的浏览器登录：authorize 返回要打开的页面，magpie 负责打开。
            *
-           * 契约（magpie）：authorize 只有 1 分钟预算——所以这里只负责把窗口开起来，
-           * 真正的等待放在 callback（它拿到 10 分钟预算）。
-           * url 返回空串：窗口由插件自己打开，magpie 不要再开一个默认浏览器，
-           * 否则登录会在**不受控**的浏览器里完成，code 会被官方 SPA 消费掉。
+           * 商汤的 redirect_uri 固定是 https://platform.sensenova.cn（控制台 SPA），
+           * 不能改成 localhost（实测 IAM 直接 404 invalid_request）。所以这里由插件
+           * 用受控浏览器截停回跳，并返回 opened: true 告诉 magpie "页面已经开了，
+           * 不要再开第二个"；url 仍然返回，供界面显示链接。
            */
-          async authorize(inputs) {
-            const apiKey = normalizeApiKey(inputs?.apiKey);
-            if (!apiKey) {
-              throw new Error("需要 Token Plan API Key（控制台 → API-Key 管理 里生成），否则登录后模型请求无法使用。");
-            }
-
-            // 预检：只有明确的 401/403 才拦下登录；网络故障不拦（后面请求时自会体现）
-            try {
-              await probeApiKey(apiKey, baseURL);
-            } catch (e) {
-              if (e?.status === 401 || e?.status === 403) throw e;
-              log("warn", `sensenova: API Key 预检没做完（${e?.message ?? e}），继续登录`);
-            }
-
+          async authorize() {
             const pkce = createPkce();
+            const authorizeUrl = buildAuthorizeUrl(pkce);
             const session = await startLoginCapture({
-              authorizeUrl: buildAuthorizeUrl(pkce),
+              authorizeUrl,
               expectedState: pkce.state,
               timeoutMs: loginTimeoutMs,
               browserPath,
@@ -215,10 +209,11 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
             });
 
             return {
-              url: "",
+              url: authorizeUrl,
+              opened: true,
               instructions:
                 "已打开一个独立的登录窗口（一次性环境，不碰你日常浏览器的登录态，也不留任何登录数据）。" +
-                "请在其中完成 SenseNova 登录——密码、短信验证码都可以；登录成功后窗口会自己关闭。",
+                "请在其中完成 SenseNova 登录——密码、短信验证码都可以；登录成功后会自动创建 API Key 并关闭窗口。",
               method: "auto",
 
               async callback() {
@@ -228,14 +223,49 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                   if (!tokens?.refresh_token) {
                     throw new Error("token 响应里没有 refresh_token（scope 需要 offline），无法静默续期");
                   }
+                  const access = tokens.access_token ?? "";
+                  if (!access) throw new Error("token 响应里没有 access_token");
                   const username = usernameFromTokens(tokens);
+
+                  // 先看 Key 数量；到 20 个就明确告诉用户，不要白创建再失败
+                  try {
+                    const listed = await listApiKeys(access);
+                    const total = Number(listed?.total_size ?? 0);
+                    if (total >= KEY_LIMIT) {
+                      const err = new Error(
+                        `该账号已有 ${total} 个 API Key（上限 ${KEY_LIMIT}）。请先到控制台删除一个，或改用“仅 API Key”登录。`,
+                      );
+                      err.code = "key_limit";
+                      throw err;
+                    }
+                  } catch (e) {
+                    if (e?.code === "key_limit") throw e;
+                    log("warn", `sensenova: 读取 API Key 数量失败（${e?.message ?? e}），继续创建`);
+                  }
+
+                  const created = await createApiKey(access, keyNameFor(username));
+                  const apiKey = createdApiKey(created);
+                  if (!apiKey) {
+                    throw new Error("控制台创建 API Key 成功，但响应里没有完整 Key；请改用“仅 API Key”登录");
+                  }
+
+                  // 校验新 Key 真能调模型；不能就明确失败（Key 已创建，可在控制台删除）
+                  try {
+                    await probeApiKey(apiKey, baseURL);
+                  } catch (e) {
+                    if (e?.status === 401 || e?.status === 403) {
+                      throw new Error(`自动创建的 API Key 未通过校验（HTTP ${e.status}）；请改用“仅 API Key”登录`);
+                    }
+                    log("warn", `sensenova: 新 Key 校验没做完（${e?.message ?? e}）`);
+                  }
+
                   return {
                     type: "success",
                     accountId: username || "SenseNova",
                     username,
                     // 三件凭据一律先 DPAPI 密封再交给 magpie 落盘
                     refresh: await seal(tokens.refresh_token),
-                    access: await seal(tokens.access_token ?? ""),
+                    access: await seal(access),
                     expires: Date.now() + lifetimeOf(tokens.expires_in),
                     apiKey: await seal(apiKey),
                   };

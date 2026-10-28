@@ -68,6 +68,13 @@ globalThis.fetch = async (url, init = {}) => {
       ],
     });
   }
+  if (u.startsWith("https://iam.sensecoreapi.cn/iam/idp/v1/apiKeys")) {
+    if (init.method === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}"));
+      return jsonRes({ api_key_plain: "sk-created", id: "key-1", displayname: body.displayname });
+    }
+    return jsonRes({ api_keys: [], total_size: 1 });
+  }
   if (u === TOKEN_URL) {
     if (tokenResponse) return tokenResponse;
     const body = String(init.body ?? "");
@@ -105,26 +112,30 @@ const check = async (name, fn) => {
 
 let record = null;
 
-await check("authorize：校验 API Key 后交出自动回调，且不让 magpie 另开浏览器", async () => {
-  const s = await plugin.auth.methods[0].authorize({ apiKey: "  Bearer sk-test  " });
-  assert.equal(s.url, "", "url 必须为空：窗口由插件自己开");
+await check("authorize：返回浏览器 URL + opened，先登录再自动建 Key", async () => {
+  const s = await plugin.auth.methods[0].authorize();
+  assert.ok(s.url.startsWith("https://platform.sensenova.cn/oauth2/auth?"), "url 必须是授权页");
+  assert.equal(s.opened, true, "插件自己开了浏览器，告诉 magpie 不要再开");
   assert.equal(s.method, "auto");
   assert.equal(typeof s.callback, "function");
-  const probe = calls.find((c) => c.url.includes("token.sensenova.cn"));
-  assert.equal(probe.init.headers.Authorization, "Bearer sk-test", "预检要带上规整后的 Key");
+  assert.equal(s.prompts, undefined, "浏览器登录不应先问 API Key");
 });
 
-await check("callback：换码产出账号记录（凭据全部密封、expires 正确）", async () => {
-  const result = await plugin.auth.methods[0].authorize({ apiKey: "sk-test" }).then((s) => s.callback());
+await check("callback：换码 + 自动创建 API Key，三件凭据全部密封", async () => {
+  const result = await plugin.auth.methods[0].authorize().then((s) => s.callback());
   assert.equal(result.type, "success");
   assert.equal(result.accountId, "wy-test");
   assert.equal(result.username, "wy-test");
   assert.equal(await unseal(result.refresh), "RT-1");
   assert.equal(await unseal(result.access), ACCESS_JWT);
-  assert.equal(await unseal(result.apiKey), "sk-test");
+  assert.equal(await unseal(result.apiKey), "sk-created");
   assert.ok(result.refresh.startsWith("dpapi:"), "refresh 必须密封后才交给 magpie 落盘");
   const left = result.expires - Date.now();
   assert.ok(left > 3500_000 && left <= 3600_000, `expires 应约为 1 小时后，实际 ${left}`);
+
+  const iamPost = calls.find((c) => c.url.includes("/iam/idp/v1/apiKeys") && c.init.method === "POST");
+  assert.ok(iamPost, "浏览器登录应自动创建 API Key");
+  assert.match(JSON.parse(String(iamPost.init.body)).displayname, /^magpie-/);
 
   // 模拟 magpie 的 save()：oauth 记录 = {type, refresh, access, expires, ...extra}
   const { type: _t, provider: _p, refresh, access, expires, ...extra } = result;
@@ -134,7 +145,7 @@ await check("callback：换码产出账号记录（凭据全部密封、expires 
 await check("loader：解出 API Key 交给宿主（宿主据此拼 Authorization）", async () => {
   const loaded = await plugin.auth.loader(async () => record);
   assert.equal(loaded.baseURL, "https://token.sensenova.cn/v1");
-  assert.equal(loaded.apiKey, "sk-test");
+  assert.equal(loaded.apiKey, "sk-created");
 });
 
 await check("api 方法：只校验/密封 Key，不打开浏览器", async () => {
