@@ -357,10 +357,13 @@ test("插件：钩子齐全、config 声明供应商、无 Key 时 fellBack", as
   assert.equal(typeof plugin.auth.refresh, "function");
   assert.equal(plugin.auth.refreshLead, 15 * 60 * 1000);
   assert.equal(plugin.auth.maxConcurrency, 1);
-  assert.equal(plugin.auth.methods.length, 1);
+  assert.equal(plugin.auth.methods.length, 2);
   assert.equal(plugin.auth.methods[0].type, "oauth");
   assert.equal(plugin.auth.methods[0].prompts[0].key, "apiKey");
   assert.equal(typeof plugin.auth.methods[0].authorize, "function");
+  assert.equal(plugin.auth.methods[1].type, "api");
+  assert.equal(plugin.auth.methods[1].prompts[0].key, "apiKey");
+  assert.equal(typeof plugin.auth.methods[1].authorize, "function");
 
   const cfg = {};
   await plugin.config(cfg);
@@ -396,6 +399,14 @@ test("插件：loader 解封 API Key；缺凭据的 usage / refresh 报需要重
   const loaded = await plugin.auth.loader(async () => record);
   assert.equal(loaded.baseURL, "https://token.sensenova.cn/v1");
   assert.equal(loaded.apiKey, "sk-test-123");
+
+  // “仅 API Key”记录：key 是密封的，loader 也要能解开
+  const apiLoaded = await plugin.auth.loader(async () => ({ type: "api", key: await seal("sk-api-456") }));
+  assert.equal(apiLoaded.apiKey, "sk-api-456");
+
+  const apiUsage = await plugin.auth.usage(async () => ({ type: "api", key: await seal("sk-api-456") }));
+  assert.equal(apiUsage.signIn, "kept");
+  assert.match(apiUsage.error, /额度不可见/);
 
   const noAccess = await plugin.auth.usage(async () => ({ ...record, access: "" }));
   assert.equal(noAccess.signIn, "expired");

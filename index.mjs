@@ -92,6 +92,20 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
     }
   };
 
+  /**
+   * 账号记录里的 API Key：
+   *   - oauth 记录：密封在 `apiKey`；
+   *   - api 记录：密封在 `key`（新登录），或历史明文 key。
+   * 两种都兼容，避免老账号重新登录。
+   */
+  const apiKeyOf = async (auth) => {
+    if (!auth) return "";
+    const raw = auth.type === "api" ? (auth.key ?? "") : (auth.apiKey ?? "");
+    if (!raw) return "";
+    if (String(raw).startsWith("dpapi:")) return unseal(raw);
+    return normalizeApiKey(raw);
+  };
+
   /** 登录前/拉取失败时声明的模型（拿过活清单后就用活清单里的聊天模型播种）。 */
   const seedModels = () => catalog.peek() ?? FALLBACK_MODELS;
   const declareModels = () => Object.fromEntries(chatModels(seedModels()).map((m) => [m.id, toConfigModel(m)]));
@@ -120,7 +134,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
         const declared = provider?.models ?? declareModels();
         let apiKey = "";
         try {
-          apiKey = await unseal(auth?.apiKey ?? "");
+          apiKey = await apiKeyOf(auth);
         } catch (e) {
           log("warn", `sensenova: ${e?.message ?? e}`);
           return fellBack(declared);
@@ -225,15 +239,51 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
             };
           },
         },
+        {
+          type: "api",
+          label: "仅 API Key（模型可用，不读额度）",
+          prompts: [
+            {
+              type: "password",
+              key: "apiKey",
+              message: "Token Plan API Key（控制台 → API Keys）",
+              placeholder: "sk-…",
+              validate: (value) => (normalizeApiKey(value) ? null : "API Key 不能为空"),
+            },
+            {
+              type: "text",
+              key: "email",
+              message: "账号备注（手机号 / 邮箱，可选；用于区分多账号）",
+              placeholder: "可留空",
+            },
+          ],
+          /**
+           * 只验证并密封 Key，不打开浏览器。
+           * 这条路径读不到额度（没有控制台令牌），但模型调用完整可用。
+           */
+          async authorize(inputs) {
+            const apiKey = normalizeApiKey(inputs?.apiKey);
+            if (!apiKey) return { type: "failed", error: "API Key 不能为空" };
+            try {
+              await probeApiKey(apiKey, baseURL);
+            } catch (e) {
+              if (e?.status === 401 || e?.status === 403) {
+                return { type: "failed", error: e?.message ?? String(e) };
+              }
+              log("warn", `sensenova: API Key 预检没做完（${e?.message ?? e}），继续保存`);
+            }
+            return { type: "success", key: await seal(apiKey) };
+          },
+        },
       ],
 
       /**
        * 账号 → 请求路由。宿主会拿 loader 的 apiKey 自动给 openai-compatible
-       * 请求加上 `Authorization: Bearer …`，这里只需要把密封值解开。
+       * 请求加上 `Authorization: Bearer …`。oauth / api 两种记录都在这里归一。
        */
       async loader(getAuth) {
         const auth = await getAuth();
-        const apiKey = await unseal(auth?.apiKey ?? "");
+        const apiKey = await apiKeyOf(auth);
         return { baseURL, apiKey };
       },
 
@@ -243,6 +293,12 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
       async usage(getAuth) {
         const auth = await getAuth();
         if (!auth) return { error: "未登录" };
+        if (auth.type === "api") {
+          return {
+            error: "此账号只登录了 API Key：模型可用，额度不可见。要用额度，请用浏览器登录添加账号。",
+            signIn: "kept",
+          };
+        }
 
         let access = "";
         try {

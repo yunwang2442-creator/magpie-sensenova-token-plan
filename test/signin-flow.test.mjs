@@ -137,6 +137,13 @@ await check("loader：解出 API Key 交给宿主（宿主据此拼 Authorizatio
   assert.equal(loaded.apiKey, "sk-test");
 });
 
+await check("api 方法：只校验/密封 Key，不打开浏览器", async () => {
+  const s = await plugin.auth.methods[1].authorize({ apiKey: "  Bearer sk-api  ", email: "note" });
+  assert.equal(s.type, "success");
+  assert.equal(await unseal(s.key), "sk-api");
+  assert.ok(s.key === "sk-api" || s.key.startsWith("dpapi:"), "Windows 上应密封");
+});
+
 await check("provider.models：活清单替换兜底（不打 fellBack 标记）", async () => {
   const list = await plugin.provider.models({ models: {} }, { auth: record });
   assert.deepEqual(Object.keys(list).sort(), ["glm-5.2", "sensenova-6.8-flash-lite"]);
