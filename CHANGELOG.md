@@ -1,0 +1,36 @@
+# Changelog
+
+所有重要变更都记在这里。版本号遵循语义化版本。
+
+## [0.2.0] - 2026-10-28
+
+### 修复
+
+- **模型目录以官网文档为准**：内置 5 个聊天模型；`/v1/models` 只覆盖上下文、输出上限、价格与描述。
+- **移除不可用模型**：`sensenova-u1.5-lite`（图像生成）、`sensenova-u1.5-fast`（图像生成）不进入 Chat 目录；`deepseek-v4.1-flash`（实际 403）从目录过滤。
+- **修正输出上限**：读取 `max_output_length`，不再把所有模型写成 32,768；GLM-5.2 为 131,072，其余为 65,536。
+- **补齐多模态能力**：`deepseek-flash` 增加图片 + 视频（视频仅 Chat）；`kimi-k3` 增加图片；`sensenova-6.8-flash-lite` 保留图片。
+- **推理档位**：模型暴露 `none / low / high / max` 四个 `reasoning_effort` 档位。
+- **额度文案**：README 与测试从 60,000/600,000 更新为 120,000/1,200,000；插件仍以 `pool-usage` 返回值为准。
+- **并发默认值**：`auth.maxConcurrency` / `magpie.maxConcurrency` 设为 1；provider 级别的设置仍可覆盖。
+
+### 文档
+
+- 新增 `CONTEXT.md`（领域术语表）与 `docs/BLUEPRINT.md`（路线图与已定决策）。
+- README 增加协议说明（Chat 是唯一支持视频的协议）、429 边界、模型可用性说明。
+- 新增 `LICENSE`、`.gitignore`、`NOTICE.md`。
+
+### 安全
+
+- README 明确：DPAPI 仅 Windows；macOS/Linux 当前明文；`pool-usage` 是控制台内部接口。
+- 移除 README 中的个人路径。
+
+## [0.1.0] - 2026-10-15
+
+### 初始版本
+
+- SenseNova Token Plan 模型（OpenAI 兼容 / Chat Completions）。
+- 浏览器 PKCE 登录，截停授权回跳，早于官方 SPA 消费 code。
+- 控制台积分池映射成 magpie 的 5 小时 / 周窗口。
+- Windows DPAPI 密封 refresh/access/API Key。
+- 离线单测、端到端签入测试、浏览器截停留烟测。

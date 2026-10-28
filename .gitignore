@@ -1,0 +1,22 @@
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+*.tgz
+
+# 本机的 magpie 状态 / 凭据
+.mimosa/
+plugin-auth.json
+*.bak
+
+# 日志与临时文件
+*.log
+*.tmp
+.env
+.env.*
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
