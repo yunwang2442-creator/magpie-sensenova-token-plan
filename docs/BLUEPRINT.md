@@ -73,7 +73,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 
 - [x] 新增 `api` 方法（只粘贴 Key，不读额度；Key 同样 DPAPI 密封）
 - [x] `protocol` 选项：`chat`（默认）/ `anthropic` / `responses`
-- [x] “一键登录自动建 Key”：浏览器登录 → `POST /iam/idp/v1/apiKeys`（key 名以 magpie- 开头）→ `GET /v1/models` 校验
+- [x] “一键登录自动建 Key”：浏览器登录 → `POST /lite/console/v1/metered/api-keys`（`key_type=API_KEY_TYPE_TOKEN_PLAN`，key 名以 magpie- 开头）→ 等待 3–10 秒生效 → `GET /v1/models` 校验
 - [ ] 中英双语提示与 README
 - 出口：新账号 30 秒内完成登录；老账号不受影响
 

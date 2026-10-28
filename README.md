@@ -74,7 +74,7 @@ magpie plugin add "<path-to-this-folder>"
 
 1. 选择后**直接弹出**一个一次性浏览器窗口——不再先问 API Key；
 2. 在里面正常登录（密码 / 短信验证码都可以）；
-3. 登录成功后，插件用控制台令牌自动创建一个名为 `magpie-…` 的 API Key，校验它，然后关闭窗口；账号出现在列表里，额度随即显示。
+3. 登录成功后，插件用控制台令牌自动创建一个以 `magpie-` 开头的 **Token Plan API Key**，等它生效（通常 3–10 秒）并校验，然后关闭窗口；账号出现在列表里，额度随即显示。
 
 > 每个账号最多 20 个 API Key。自动创建会新增一个；如果已到上限，插件会提示你先去控制台删除一个，或改用“仅 API Key”方式。重新登录也会新增一个 Key；想复用已有 Key 就用方式二。
 
@@ -140,7 +140,7 @@ magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 - 插件当前只与两个厂商域名通信：
   - `platform.sensenova.cn`：授权、令牌、额度；
   - `token.sensenova.cn`：模型。
-  未来的“自动建 API Key”功能会用到 `iam.sensecoreapi.cn`，当前版本未实现。没有统计、没有遥测、没有第三方地址；日志不打印令牌（只打状态码与厂商给的错误描述）。
+  自动建 Key 走 `platform.sensenova.cn/lite/console/v1/metered/api-keys`，仍是同一个厂商域名。没有统计、没有遥测、没有第三方地址；日志不打印令牌（只打状态码与厂商给的错误描述）。
 - **非 Windows 平台（未适配）**：DPAPI 不存在，凭据会**明文落盘**。目标平台目前是 Windows；macOS Keychain 在路线图里。
 - 日志只出现在 magpie 自己的日志里，不写文件、不打印令牌。
 - 额度端点 `pool-usage` 是控制台前端自用的、未公开的接口；平台改版可能让它失效，也可能触发风控。模型调用不受影响。
@@ -173,8 +173,8 @@ bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模�
 | "没有找到 Microsoft Edge 或 Chrome" | 装 Edge，或设 `MAGPIE_SENSENOVA_BROWSER=C:\path\to\msedge.exe`，或在插件 options 里写 `"browser": "…"` |
 | 登录窗口不弹 | 看 magpie 日志里 `[sensenova]` 开头的行（`client.app.log`） |
 | 浏览器里登录完成但 magpie 说超时 | 登录预算 8 分钟（可 `options.loginTimeoutMs` 调大）；中途关窗会立即失败 |
-| 登录成功但提示自动创建 API Key 失败 | 账号可能已有 20 个 Key；去控制台删一个，或改用“仅 API Key”。错误里会带 IAM 的原始说明 |
-| 自动创建的 Key 没通过校验 | 控制台看自动创建的那个 magpie Key 是否启用；或改用“仅 API Key” |
+| 登录成功但提示自动创建 API Key 失败 | 账号可能已有 20 个 Key；去控制台删一个，或改用“仅 API Key”。错误里会带控制台的原始说明 |
+| 自动创建的 Key 没通过校验 | 新 Key 通常要 3–10 秒生效，插件会自动重试；超过约 15 秒仍 401 才会失败。失败时插件会尝试删掉这个 Key，也可以去控制台手动删 |
 | "API Key 被拒绝" | 粘贴不完整，或这个 Key 不属于 Token Plan；控制台重新生成 |
 | 额度显示"控制台会话已失效" | 令牌被平台吊销——重新登录一次 |
 | 换电脑后账号报解密失败 | DPAPI 按用户/机器绑定，重新登录即可 |

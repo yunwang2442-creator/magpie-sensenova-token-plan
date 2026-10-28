@@ -68,12 +68,13 @@ globalThis.fetch = async (url, init = {}) => {
       ],
     });
   }
-  if (u.startsWith("https://iam.sensecoreapi.cn/iam/idp/v1/apiKeys")) {
+  if (u.startsWith("https://platform.sensenova.cn/lite/console/v1/metered/api-keys")) {
     if (init.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
-      return jsonRes({ api_key_plain: "sk-created", id: "key-1", displayname: body.displayname });
+      return jsonRes({ api_key_plain: "sk-created", id: "key-1", displayname: body.displayname, key_type: body.key_type });
     }
-    return jsonRes({ api_keys: [], total_size: 1 });
+    if (init.method === "DELETE") return new Response("", { status: 204 });
+    return jsonRes({ api_keys: [], total_count: 1 });
   }
   if (u === TOKEN_URL) {
     if (tokenResponse) return tokenResponse;
@@ -133,9 +134,11 @@ await check("callback：换码 + 自动创建 API Key，三件凭据全部密封
   const left = result.expires - Date.now();
   assert.ok(left > 3500_000 && left <= 3600_000, `expires 应约为 1 小时后，实际 ${left}`);
 
-  const iamPost = calls.find((c) => c.url.includes("/iam/idp/v1/apiKeys") && c.init.method === "POST");
-  assert.ok(iamPost, "浏览器登录应自动创建 API Key");
-  assert.match(JSON.parse(String(iamPost.init.body)).displayname, /^magpie-/);
+  const keyPost = calls.find((c) => c.url.includes("/metered/api-keys") && c.init.method === "POST");
+  assert.ok(keyPost, "浏览器登录应自动创建 Token Plan API Key");
+  const body = JSON.parse(String(keyPost.init.body));
+  assert.match(body.displayname, /^magpie-/);
+  assert.equal(body.key_type, "API_KEY_TYPE_TOKEN_PLAN");
 
   // 模拟 magpie 的 save()：oauth 记录 = {type, refresh, access, expires, ...extra}
   const { type: _t, provider: _p, refresh, access, expires, ...extra } = result;

@@ -2,6 +2,16 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.4.2] - 2026-10-29
+
+### 修复
+
+- **自动建 Key 改走 Token Plan 的正确接口**：`POST https://platform.sensenova.cn/lite/console/v1/metered/api-keys`，body 带 `key_type: "API_KEY_TYPE_TOKEN_PLAN"`。之前用 IAM 的 `/iam/idp/v1/apiKeys` 创建的是通用/按量 Key（`type` 为空），对 `/v1/models` 返回 401。
+- **等待新 Key 生效**：新 Key 在网关上生效通常需要 3–10 秒；`probeApiKey` 对 401/403 依次重试（0/1.5/3/4.5/6 秒，约 15 秒）。
+- **失败自动清理**：校验仍失败时，按 `displayname` 找到刚创建的 Key 并删除，避免在账号里留垃圾。
+- 新增 `deleteApiKey`；`listApiKeys` 支持 `pageSize`。
+- README 更新接口、等待时间和排错说明。
+
 ## [0.4.1] - 2026-10-29
 
 ### 修复

@@ -33,6 +33,7 @@ import {
   buildAuthorizeUrl,
   createApiKey,
   createdApiKey,
+  deleteApiKey,
   exchangeCode,
   fetchPoolUsage,
   listApiKeys,
@@ -130,6 +131,28 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
     if (!raw) return "";
     if (String(raw).startsWith("dpapi:")) return unseal(raw);
     return normalizeApiKey(raw);
+  };
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * 新创建的 Key 在网关上生效有 3–10 秒延迟；401/403 时多等几次，
+   * 不要一次 401 就判定创建失败。网络错误不重试（交给外层 best-effort）。
+   */
+  const probeWithRetry = async (apiKey) => {
+    const delays = [0, 1500, 3000, 4500, 6000];
+    let last = null;
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i]) await sleep(delays[i]);
+      try {
+        return await probeApiKey(apiKey, baseURL);
+      } catch (e) {
+        last = e;
+        if (e?.status !== 401 && e?.status !== 403) throw e;
+        log("info", `sensenova: 新 Key 还在生效中（第 ${i + 1} 次，HTTP ${e.status}）`);
+      }
+    }
+    throw last;
   };
 
   /** 登录前/拉取失败时声明的模型（拿过活清单后就用活清单里的聊天模型播种）。 */
@@ -230,7 +253,7 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                   // 先看 Key 数量；到 20 个就明确告诉用户，不要白创建再失败
                   try {
                     const listed = await listApiKeys(access);
-                    const total = Number(listed?.total_size ?? 0);
+                    const total = Number(listed?.total_count ?? listed?.total_size ?? 0);
                     if (total >= KEY_LIMIT) {
                       const err = new Error(
                         `该账号已有 ${total} 个 API Key（上限 ${KEY_LIMIT}）。请先到控制台删除一个，或改用“仅 API Key”登录。`,
@@ -243,17 +266,35 @@ export async function SenseNovaPlugin({ client } = {}, options = {}) {
                     log("warn", `sensenova: 读取 API Key 数量失败（${e?.message ?? e}），继续创建`);
                   }
 
-                  const created = await createApiKey(access, keyNameFor(username));
+                  const keyName = keyNameFor(username);
+                  const created = await createApiKey(access, keyName);
                   const apiKey = createdApiKey(created);
+
+                  const cleanup = async () => {
+                    try {
+                      if (created?.id) {
+                        await deleteApiKey(access, created.id);
+                        return;
+                      }
+                      const listed = await listApiKeys(access, { pageSize: 20 });
+                      const match = (listed?.api_keys ?? []).find((k) => k.displayname === keyName);
+                      if (match?.id) await deleteApiKey(access, match.id);
+                    } catch (e) {
+                      log("warn", `sensenova: 清理未成功的 Key 失败（${e?.message ?? e}）`);
+                    }
+                  };
+
                   if (!apiKey) {
+                    await cleanup();
                     throw new Error("控制台创建 API Key 成功，但响应里没有完整 Key；请改用“仅 API Key”登录");
                   }
 
-                  // 校验新 Key 真能调模型；不能就明确失败（Key 已创建，可在控制台删除）
+                  // 新 Key 在网关上生效有 3–10 秒延迟；probeWithRetry 会等它。
                   try {
-                    await probeApiKey(apiKey, baseURL);
+                    await probeWithRetry(apiKey);
                   } catch (e) {
                     if (e?.status === 401 || e?.status === 403) {
+                      await cleanup();
                       throw new Error(`自动创建的 API Key 未通过校验（HTTP ${e.status}）；请改用“仅 API Key”登录`);
                     }
                     log("warn", `sensenova: 新 Key 校验没做完（${e?.message ?? e}）`);

@@ -1,6 +1,6 @@
 {
   "name": "magpie-sensenova-token-plan",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "SenseNova（商量/日日新）Token Plan 供应商插件：Chat Completions 模型 + 控制台积分额度，浏览器登录，凭据 DPAPI 密封",
   "type": "module",
