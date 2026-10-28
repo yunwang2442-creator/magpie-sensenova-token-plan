@@ -280,7 +280,7 @@ test("模型目录：官网骨架 + /models 覆盖 + 过滤图像/杂项", () =>
 
   const flash = live.find((m) => m.id === "deepseek-flash");
   assert.equal(flash.name, "DeepSeek V4.1 Flash");
-  assert.equal(flash.maxCompletionTokens, 65536);
+  assert.equal(flash.maxCompletionTokens, 393216, "实测 max_tokens 上界优先于 live 的 65,536");
   assert.deepEqual([...flash.inputModalities].sort(), ["image", "text", "video"]);
   assert.equal(flash.supportsTools, true);
   assert.equal(flash.reasoning, true);
@@ -337,6 +337,12 @@ test("模型目录：按账号分桶缓存，A 的清单不会给 B", async () =
   assert.equal(calls.length, 2, "两个账号应各发一次请求");
   await catalog.load("A");
   assert.equal(calls.length, 2, "同一账号应命中自己的缓存");
+});
+
+test("模型目录：DeepSeek 实测输出上限优先，Kimi 保持 live", () => {
+  assert.equal(normalizeModel({ id: "deepseek-flash", max_output_length: 65536 }).maxCompletionTokens, 393216);
+  assert.equal(normalizeModel({ id: "deepseek-v4-flash" }).maxCompletionTokens, 384000);
+  assert.equal(normalizeModel({ id: "kimi-k3", max_output_length: 65536 }).maxCompletionTokens, 65536);
 });
 
 /* -------------------------------------------------- DPAPI（需要 bun） */

@@ -1,6 +1,6 @@
 {
   "name": "magpie-sensenova-token-plan",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "SenseNova（商量/日日新）Token Plan 供应商插件：Chat Completions 模型 + 控制台积分额度，浏览器登录，凭据 DPAPI 密封",
   "type": "module",
@@ -24,6 +24,10 @@
     "token-plan"
   ],
   "license": "MIT",
+  "scripts": {
+    "check": "bun scripts/check-shape.mjs",
+    "test": "bun test/unit.test.mjs && bun test/signin-flow.test.mjs"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yunwang2442-creator/magpie-sensenova-token-plan.git"

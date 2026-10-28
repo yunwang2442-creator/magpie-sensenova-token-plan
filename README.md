@@ -44,8 +44,8 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 | 官网名称 | Model ID | Chat | 输入 | 输出 | 上下文 | 最大输出 |
 |---|---|---|---|---|---|---|
 | SenseNova 6.8 Flash Lite | `sensenova-6.8-flash-lite` | ✅ | 文本、图片 | 文本 | 262,144 | 65,536 |
-| DeepSeek V4 Flash | `deepseek-v4-flash` | ✅ | 文本 | 文本 | 1,048,576 | 65,536 |
-| DeepSeek V4.1 Flash | `deepseek-flash` | ✅ | 文本、图片、视频（仅 Chat） | 文本 | 1,048,576 | 65,536 |
+| DeepSeek V4 Flash | `deepseek-v4-flash` | ✅ | 文本 | 文本 | 1,048,576 | 384,000 |
+| DeepSeek V4.1 Flash | `deepseek-flash` | ✅ | 文本、图片、视频（仅 Chat） | 文本 | 1,048,576 | 393,216 |
 | GLM-5.2 | `glm-5.2` | ✅ | 文本 | 文本 | 1,048,576 | 131,072 |
 | Kimi K3 | `kimi-k3` | ✅ | 文本、图片 | 文本 | 1,048,576 | 65,536 |
 
@@ -55,6 +55,8 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 - `deepseek-v4.1-flash`：`/v1/models` 会返回这个 id，但实际请求返回 403（`model is not available in the current token plan`），已从目录过滤。
 
 > `deepseek-flash` 就是 DeepSeek V4.1 Flash 1017 版；不要被 id 里的 “flash” 误导。
+
+> 输出上限：DeepSeek 两个模型用 **实测的 `max_tokens` 合法上界**（2026-10-29：`should be in [1, 393216]` / `[1, 384000]`），不是 `/models` 的 65,536；Kimi 因 429 未测，保持 65,536。这里说的是“请求能开到多大”，不是“模型一定生成这么长”。
 
 **推理档位**：Chat 发 `reasoningEffort`；Anthropic 发 `thinking` + `output_config.effort`；Responses 只保留 `none`（该兼容端点忽略其他档位）。`sensenova-6.8-flash-lite` 额外有 `medium`，其余模型是 `none/low/high/max`。
 
@@ -106,6 +108,17 @@ magpie plugin add "<path-to-this-folder>"
 **额度不写死**：插件只显示 `pool-usage` 返回的 `limit` / `used` / `remaining` / `reset_at`。优先用 `used`，缺失时用 `limit - remaining`；两者都没有就**跳过该窗口**，不伪造 0（否则会被误读成 100% 已用）。官网文档和接口可能不一致（尤其是 Flash-Lite 专属池），以你的账号接口为准。
 
 额度读取有 60 秒缓存（magpie 会频繁刷新额度行，不必每次都打接口）。
+
+### Key 清理
+
+浏览器登录每次都会新建一个 `magpie-*` Key；账号上限是 20 个。用：
+
+```bash
+bun scripts/key-gc.mjs          # 预览，不删
+bun scripts/key-gc.mjs --apply  # 删除旧的 magpie-*，保留最新 2 个
+```
+
+脚本只删 `magpie-*`，永远保护当前账号正在用的 Key，也不会碰你手动创建的 `Key`。**默认 dry-run**；多机器使用同一账号时先看清单再 `--apply`。
 
 ## 429：先看边界
 
@@ -168,6 +181,12 @@ SMOKE_HEADFUL=1 bun test/smoke-capture.mjs   # 同上，但用可见窗口跑（
 
 bun scripts/login-test.mjs                # 真实登录自测（弹窗，不经过 magpie）
 bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模型
+
+bun scripts/check-shape.mjs               # 不联网：检查 config/provider.models/auth/loader/usage/refresh 形状
+bun scripts/quota-total.mjs               # 5 个账号按窗口合计（调用 magpie quota --json）
+bun scripts/quota-total.mjs --json        # 机器可读
+bun scripts/key-gc.mjs                    # Key 清理预览（默认不删）
+bun scripts/key-gc.mjs --apply            # 真删：保留最新 2 个 magpie-*，保护当前 Key
 ```
 
 ## 排错
@@ -209,6 +228,9 @@ lib/dpapi.mjs          Windows DPAPI 密封/解开（bun:ffi）
 lib/quota.mjs          额度响应 → magpie 窗口映射
 lib/models.mjs         模型目录：官网骨架 + 活的 /models 覆盖
 scripts/login-test.mjs 独立登录自测
+scripts/check-shape.mjs 不联网的 hook 形状自检
+scripts/quota-total.mjs 多账号额度合计
+scripts/key-gc.mjs      Token Plan Key 清理（默认 dry-run）
 test/unit.test.mjs     离线单测
 test/signin-flow.test.mjs  端到端签入（打桩浏览器与网络）
 test/smoke-capture.mjs 浏览器截停留烟测（本地回环，不联网）

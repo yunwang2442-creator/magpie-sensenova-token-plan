@@ -2,6 +2,20 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.6.0] - 2026-10-29
+
+### 新增
+
+- **DeepSeek 实测输出上限**：`deepseek-flash` 393,216、`deepseek-v4-flash` 384,000（2026-10-29 实测 `max_tokens` 合法范围）；Kimi 因 429 未测，保持 65,536。
+- `scripts/quota-total.mjs`：读 `magpie quota --json`，按窗口名合计 5 个账号的额度，取最早重置时间；不做页面。
+- `scripts/key-gc.mjs`：Token Plan Key 清理，**默认 dry-run**，`--apply` 才删；保留最新 2 个 `magpie-*`，保护当前账号正在用的 Key，绝不碰手动创建的 `Key`。
+- `scripts/check-shape.mjs`：不联网检查 config / provider.models / auth / loader / usage / refresh 形状；思路改编自 magpie-community/plugins（MIT）。
+- `package.json` 增加 `check` / `test` 脚本。
+
+### 文档
+
+- README 补充输出上限的“实测合法范围”说明、Key 清理流程和三个脚本的用法。
+
 ## [0.5.0] - 2026-10-29
 
 ### 修复
