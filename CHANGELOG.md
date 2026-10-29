@@ -2,6 +2,14 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.7.1] - 2026-10-29
+
+### 新增
+
+- `scripts/protocol-test.mjs`：真实账号给 Chat / Anthropic Messages / Responses 各发一个 `max_tokens=1`，报告 HTTP 状态与厂商错误；429 不当作脚本失败。
+- 本地图标：`magpie.icon` 改为内置 data URI（官方 favicon 的 PNG 字节），离线/被墙也能显示。
+- `scripts/try.ps1` 自动选择缓存里最新的 Bun，不再硬编码 1.4.4。
+
 ## [0.7.0] - 2026-10-29
 
 ### 新增

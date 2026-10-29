@@ -189,6 +189,8 @@ bun scripts/login-test.mjs                # 真实登录自测（弹窗，不经
 bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模型
 
 bun scripts/check-shape.mjs               # 不联网：检查 config/provider.models/auth/loader/usage/refresh 形状
+bun scripts/protocol-test.mjs             # 真实账号各发一个 max_tokens=1：Chat / Anthropic / Responses
+bun scripts/protocol-test.mjs --account 3 --protocol anthropic
 bun scripts/quota-total.mjs               # 5 个账号按窗口合计（调用 magpie quota --json）
 bun scripts/quota-total.mjs --json        # 机器可读
 bun scripts/key-gc.mjs                    # Key 清理预览（默认不删）
@@ -238,6 +240,7 @@ lib/quota.mjs          额度响应 → magpie 窗口映射
 lib/models.mjs         模型目录：官网骨架 + 活的 /models 覆盖
 scripts/login-test.mjs 独立登录自测
 scripts/check-shape.mjs 不联网的 hook 形状自检
+scripts/protocol-test.mjs 三协议真实烟测
 scripts/quota-total.mjs 多账号额度合计
 scripts/key-gc.mjs      Token Plan Key 清理（默认 dry-run）
 scripts/try.ps1         Windows 沙箱加载插件

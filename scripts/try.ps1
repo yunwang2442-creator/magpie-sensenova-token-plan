@@ -43,9 +43,17 @@ $vars = @{
   XDG_STATE_HOME    = (Join-Path $sandbox ".local\state")
   MAGPIE_ADDR       = "127.0.0.1:3499"
 }
-# 复用已下载的 Bun，沙箱只隔离配置，不重新下载。
-$bun = Join-Path $realProfile ".cache\magpie\bun\1.4.4\magpie-bun.exe"
-if (Test-Path $bun) { $vars["MAGPIE_BUN"] = $bun }
+# 复用已下载的 Bun，沙箱只隔离配置，不重新下载；取缓存里最新的版本。
+$bun = $null
+$bunRoot = Join-Path $realProfile ".cache\magpie\bun"
+if (Test-Path $bunRoot) {
+  $bun = Get-ChildItem $bunRoot -Directory |
+    Sort-Object Name -Descending |
+    ForEach-Object { Join-Path $_.FullName "magpie-bun.exe" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+}
+if ($bun) { $vars["MAGPIE_BUN"] = $bun }
 $old = @{}
 foreach ($name in $vars.Keys) {
   $old[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
