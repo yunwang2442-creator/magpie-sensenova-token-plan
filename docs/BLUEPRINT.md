@@ -1,6 +1,6 @@
 # magpie-sensenova 蓝图
 
-> 状态：v0.7.0 已完成（私有仓库）：P0/P1 审计修复 + 图像生成模型 + 额度合计 / Key 清理 / 形状自检脚本；自动 Key 生命周期与发布物料仍待做。
+> 状态：v0.7.0 = 私有稳定版（不公开则到此为止）；V1.0 发布版是可选分支，不是阻塞。
 
 ## 0. 当前进度（v0.7.0）
 
@@ -88,11 +88,12 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - [x] Windows 沙箱：`scripts/try.ps1`
 - [ ] 中英双语提示与 README（发布前再做）
 
-### P3 发布 → v1.0.0
+### P3 发布 → v1.0.0（可选；不公开就不做）
 
 - 私有仓库；想公开时加 `magpie-plugin` topic + npm `magpie-sensenova-token-plan`
 - CI（bun test）、release notes、截图
 - 出口：干净机器 `magpie plugin add <路径或 npm>` 可用
+- **不公开 = 跳过本阶段，不是阻塞**；v0.7.0 就是私有稳定版
 
 ### P4 平台（后续）
 
