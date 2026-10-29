@@ -154,6 +154,11 @@ test("额度映射：两个池 × 两个窗口，专属池限定 flash-lite", ()
   assert.equal(g5.resetsAt, 1788595830); // 秒——magpie 会 ×1000
   assert.equal(g5.display, "0 / 120,000");
   assert.equal(g5.model, undefined);
+  assert.deepEqual(
+    g5.notModels,
+    ["sensenova-6.7-flash-lite", "sensenova-6.8-flash-lite"],
+    "通用池要排除 Flash-Lite，否则通用池用尽会误伤专属池",
+  );
   assert.equal(g5.unit, "积分");
 
   // 8699.744 / 1,200,000 = 0.72497866…%
@@ -170,6 +175,33 @@ test("额度映射：两个池 × 两个窗口，专属池限定 flash-lite", ()
   assert.equal(wallet.balance, 24506.9624);
   assert.equal(wallet.runsOutAt, 1791122400);
   assert.equal(wallet.runsOut, 748.834);
+});
+
+test("额度映射：通用池排除专属池的 model_ids；没有专属池时不加 notModels", () => {
+  const withIds = toUsage({
+    pools: [
+      {
+        name: "通用",
+        pool_type: "default",
+        window_5h: { limit: "100", used: "100" },
+      },
+      {
+        name: "专属",
+        pool_type: "dedicated",
+        model_ids: ["sensenova-6.8-flash-lite"],
+        window_5h: { limit: "50", used: "10" },
+      },
+    ],
+  });
+  const general = withIds.windows.find((w) => w.name.startsWith("通用"));
+  const dedicated = withIds.windows.find((w) => w.name.startsWith("专属"));
+  assert.deepEqual(general.notModels, ["sensenova-6.8-flash-lite"]);
+  assert.deepEqual(dedicated.models, ["sensenova-6.8-flash-lite"]);
+
+  const generalOnly = toUsage({
+    pools: [{ name: "通用", pool_type: "default", window_5h: { limit: "100", used: "25" } }],
+  });
+  assert.equal(generalOnly.windows[0].notModels, undefined, "没有专属池就不能排除任何模型");
 });
 
 test("额度映射：used 优先、remaining 缺失不伪造 0、负数允许超支", () => {

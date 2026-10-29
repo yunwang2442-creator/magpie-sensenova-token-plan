@@ -2,6 +2,13 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.7.2] - 2026-10-29
+
+### 修复
+
+- **额度路由隔离**：通用积分池窗口现在用 `notModels` 排除 Flash-Lite 模型（优先用接口返回的 `model_ids`，缺失时用 `sensenova-6.7-flash-lite` / `sensenova-6.8-flash-lite` 兜底）。此前 magpie 取所有适用窗口的最大 `used`，通用池耗尽会把仍有专属额度的 Flash-Lite 一起判死。专属池窗口仍用 `models` 限定到这些模型。
+- 实测真实 `pool-usage`：通用窗口带 `notModels`，Flash-Lite 窗口带 `models`；单测增至 23 个。
+
 ## [0.7.1] - 2026-10-29
 
 ### 新增

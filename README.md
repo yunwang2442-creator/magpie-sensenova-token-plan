@@ -104,10 +104,12 @@ magpie plugin add "<path-to-this-folder>"
 
 | 控制台 | magpie 窗口 | 说明 |
 |---|---|---|
-| 通用积分池 · 5 小时 | span 18000s | 当前 120,000 分 / 滚动 5 小时 |
-| 通用积分池 · 周 | span 604800s | 当前 1,200,000 分 / 滚动 7 天 |
+| 通用积分池 · 5 小时 | span 18000s | 当前 120,000 分 / 滚动 5 小时；窗口排除 Flash-Lite 模型 |
+| 通用积分池 · 周 | span 604800s | 当前 1,200,000 分 / 滚动 7 天；同样排除 Flash-Lite |
 | Flash-Lite 积分池 · 5 小时 / 周 | 同上，且限定 `flash-lite` 模型 | 官网写 60,000 / 600,000；本机接口可能返回 120,000 / 1,200,000 |
 | 活动积分（`grant_balance`） | `balance` + 钱包窗口 | 带到期时间的那部分赠送积分；有 `nearest_grant_expiry` 时额外给 `runsOutAt/runsOut` |
+
+**路由隔离**：厂商的扣费顺序是“Flash-Lite 先扣专属池，再扣通用池”。magpie 判断账号是否用完时会取所有适用窗口里最大的 `used`；如果通用池窗口也覆盖 Flash-Lite，通用池一满就会把 Flash-Lite 一起判死。插件因此给通用池窗口加 `notModels`（排除专属池的 `model_ids`，接口没给时用两个 Flash-Lite id 兜底），专属池窗口则限定到这些模型。这样通用池耗尽只挡其他模型，Flash-Lite 仍可用自己的池。
 
 **额度不写死**：插件只显示 `pool-usage` 返回的 `limit` / `used` / `remaining` / `reset_at`。优先用 `used`，缺失时用 `limit - remaining`；两者都没有就**跳过该窗口**，不伪造 0（否则会被误读成 100% 已用）。官网文档和接口可能不一致（尤其是 Flash-Lite 专属池），以你的账号接口为准。
 
