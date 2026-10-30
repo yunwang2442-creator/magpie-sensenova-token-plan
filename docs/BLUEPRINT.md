@@ -43,8 +43,8 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 | SenseNova 6.8 Flash Lite | `sensenova-6.8-flash-lite` | ✅ | 文本、图片 | 文本 | 262,144 | 65,536 | 轻量多模态 |
 | SenseNova U1.5 Lite | `sensenova-u1.5-lite` | ❌ / Drawer ✅ | 文本、参考图 | 图片 | 262,144 | 65,536 | 图像生成/编辑，magpie Drawers 走 `/v1/images/*` |
 | SenseNova U1.5 Fast | `sensenova-u1.5-fast` | ❌ / Drawer ✅ | 文本、参考图 | 图片 | 262,144 | 65,536 | 图像生成加速版 |
-| DeepSeek V4 Flash | `deepseek-v4-flash` | ✅ | 文本 | 文本 | 1,048,576 | 65,536 | V4 Flash 0731 |
-| DeepSeek V4.1 Flash | `deepseek-flash` | ✅ | 文本、图片、视频（仅 Chat） | 文本 | 1,048,576 | 65,536 | V4.1 Flash 1017；你启用的就是这个 |
+| DeepSeek V4 Flash | `deepseek-v4-flash` | ✅ | 文本 | 文本 | 1,048,576 | 384,000 | V4 Flash 0731；输出为 2026-10-29 实测上界 |
+| DeepSeek V4.1 Flash | `deepseek-flash` | ✅ | 文本、图片、视频（仅 Chat） | 文本 | 1,048,576 | 393,216 | V4.1 Flash 1017；你启用的就是这个；输出为 2026-10-29 实测上界 |
 | GLM-5.2 | `glm-5.2` | ✅ | 文本 | 文本 | 1,048,576 | 131,072 | 长程 Coding |
 | Kimi K3 | `kimi-k3` | ✅ | 文本、图片 | 文本 | 1,048,576 | 65,536 | 429 重灾区 |
 
@@ -57,7 +57,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 | 通用积分池 | 120,000 | 1,200,000 | 官网 + `pool-usage` 一致 |
 | Flash-Lite 专属池 | 官网写 60,000；本机接口返回 120,000 | 官网写 600,000；本机接口返回 1,200,000 | **以接口为准** |
 
-结论：插件不写死额度，只展示 `pool-usage` 返回的 `limit` / `remaining` / `reset_at`。
+结论：插件不写死额度，只展示 `pool-usage` 返回的数字——优先 `used`，缺失时用 `limit - remaining`，两者都缺就跳过该窗口（不伪造 0）。
 
 ## 6. 阶段
 
@@ -93,7 +93,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - 私有仓库；想公开时加 `magpie-plugin` topic + npm `magpie-sensenova-token-plan`
 - CI（bun test）、release notes、截图
 - 出口：干净机器 `magpie plugin add <路径或 npm>` 可用
-- **不公开 = 跳过本阶段，不是阻塞**；v0.7.0 就是私有稳定版
+- **不公开 = 跳过本阶段，不是阻塞**；v0.8.0 就是私有稳定版
 
 ### P4 平台（后续）
 
@@ -115,7 +115,7 @@ Windows DPAPI                     →     DPAPI + macOS Keychain（v1.1）
 - 不重写 magpie 的 Draws 逻辑：插件只把 U1.5 列进目录，`/v1/images/generations` 和 `/v1/images/edits` 的转发交给 magpie。
 - 不做多账号额度合并显示（magpie 的限制；留给上游或后续页面）。
 - 不进 `magpie-community/registry`（除非以后决定公开并接受社区维护）。
-- 不在插件内做 429 重试或自定义路由策略。
+- 不在插件内做 429 重试；路由策略只做**排序**（`gateway.mjs` 的 `balanced`），不发请求、不改 magpie 的重试/休息逻辑。
 
 ## 9. 发布前检查清单
 

@@ -148,7 +148,8 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
     }
     return options?.[key] === true;
   };
-  const pruneOldKeys = optionOn("prune_old_keys");
+  // 惰性读取：用户在设置页切换开关后，无需重载插件即可生效。
+  const pruneOldKeysOn = () => optionOn("prune_old_keys");
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -177,34 +178,59 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
   /**
    * 自动清理同机器、同账号的旧 magpie- Key。
    * 默认关闭；auth.options 的 prune_old_keys 打开才跑。
-   * keyName 为空代表创建前预清理（保留最新 1 个，为新 Key 腾位）；
-   * keyName 给出代表创建后清理（保留最新 2 个，含刚创建的）。
-   * 绝不动手动 Key。
+   *
+   * freeSlots = 0：常规清理——保留最新 2 个本机 Key；
+   * freeSlots > 0：满额预清理——为即将创建的新 Key 腾出 freeSlots 个名额，
+   *   从最旧的本机 Key 删起，但正在使用的 Key（末 4 位）与刚创建的 Key 永不删。
+   * create_time 不可解析的 Key 一律不删（新旧无法判定，宁可留着）。
+   * 返回实际删除数量（预清理后调用方据此判断是否还有名额）。
    */
-  const pruneKeys = async (access, keyName = "") => {
+  const pruneKeys = async (access, keyName = "", activeSuffix = "", freeSlots = 0) => {
+    let deleted = 0;
     try {
       const listed = await listApiKeys(access, { pageSize: 20 });
       const at = (value) => {
         const n = Date.parse(String(value ?? ""));
         return Number.isFinite(n) ? n : 0;
       };
-      const keys = (listed.api_keys ?? []).slice().sort((a, b) => at(b.create_time) - at(a.create_time));
+      const rows = (listed.api_keys ?? []).filter((k) => k && k.id);
+      const sorted = rows.slice().sort((a, b) => at(b.create_time) - at(a.create_time));
       const prefix = `magpie-${HOST_TAG}-`;
-      const ours = keys.filter((k) => String(k.displayname ?? "").startsWith(prefix));
-      if (!ours.length) return;
-      const keepLimit = keyName ? 2 : 1;
-      const keep = new Set(ours.slice(0, keepLimit).map((k) => k.id));
+      const ours = sorted.filter((k) => String(k.displayname ?? "").startsWith(prefix));
+      if (!ours.length) return 0;
+
+      const protectedIds = new Set();
       if (keyName) {
         const fresh = ours.find((k) => k.displayname === keyName);
-        if (fresh?.id) keep.add(fresh.id);
+        if (fresh?.id) protectedIds.add(fresh.id);
       }
-      for (const k of ours) {
-        if (keep.has(k.id)) continue;
-        await deleteApiKey(access, k.id).catch((e) => log("warn", `sensenova: 清理旧 Key 失败（${e?.message ?? e}）`));
+      // 正在使用的 Key（按末 4 位对 api_key）绝不能删。
+      if (activeSuffix) {
+        for (const k of rows) {
+          if (String(k.api_key ?? "").endsWith(activeSuffix)) protectedIds.add(k.id);
+        }
+      }
+      // 常规清理保留最新 2 个；预清理允许从最旧的删起，直到腾够名额。
+      const keep = new Set([...ours.slice(0, 2).map((k) => k.id), ...protectedIds]);
+      const candidates = ours
+        .filter((k) => !protectedIds.has(k.id) && at(k.create_time) > 0)
+        .sort((a, b) => at(a.create_time) - at(b.create_time)); // 最旧优先
+      for (const k of candidates) {
+        if (freeSlots > 0 ? deleted >= freeSlots : keep.has(k.id)) continue;
+        await deleteApiKey(access, k.id)
+          .then(() => {
+            deleted += 1;
+          })
+          .catch((e) => log("warn", `sensenova: 清理旧 Key 失败（${e?.message ?? e}）`));
+      }
+      const skipped = ours.filter((k) => !protectedIds.has(k.id) && at(k.create_time) <= 0);
+      if (skipped.length) {
+        log("warn", `sensenova: 跳过 ${skipped.length} 个 create_time 不可解析的 Key，不做删除`);
       }
     } catch (e) {
       log("warn", `sensenova: 自动清理旧 Key 跳过（${e?.message ?? e}）`);
     }
+    return deleted;
   };
 
   const declareModels = () => Object.fromEntries(catalogModels(seedModels()).map((m) => [m.id, toConfigModel(m, wire)]));
@@ -230,7 +256,7 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
        * 这个账号现在能用的聊天模型：活清单过滤后为准，失败就交回声明清单（打 fellBack 标记）。
        */
       async models(provider, { auth } = {}) {
-        const declared = provider?.models ?? declareModels();
+        const declared = provider?.models && Object.keys(provider.models).length > 0 ? provider.models : declareModels();
         let apiKey = "";
         try {
           apiKey = await apiKeyOf(auth);
@@ -314,17 +340,23 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
 
                   // 先看 Key 数量；如果开启了自动清理且已满，先预清理腾出空间
                   try {
-                    let listed = await listApiKeys(access);
-                    let total = Number(listed?.total_count ?? listed?.total_size ?? 0);
-                    if (total >= KEY_LIMIT && pruneOldKeys) {
+                    // pageSize 拉满 20：total_count 字段若改名/缺失，用 api_keys 长度兜底
+                    const listed = await listApiKeys(access, { pageSize: 20 });
+                    const count = (listed?.api_keys ?? []).filter((k) => k && k.id).length;
+                    let total = Math.max(Number(listed?.total_count ?? listed?.total_size ?? 0) || 0, count);
+                    if (total >= KEY_LIMIT && pruneOldKeysOn()) {
                       log("info", `sensenova: 账号已有 ${total}/${KEY_LIMIT} 个 Key，执行创建前预清理`);
-                      await pruneKeys(access);
-                      listed = await listApiKeys(access);
-                      total = Number(listed?.total_count ?? listed?.total_size ?? 0);
+                      const need = Math.max(1, total - (KEY_LIMIT - 1));
+                      const freed = await pruneKeys(access, "", "", need);
+                      log("info", `sensenova: 预清理删除 ${freed}/${need} 个旧 Key`);
+                      const again = await listApiKeys(access, { pageSize: 20 });
+                      const againCount = (again?.api_keys ?? []).filter((k) => k && k.id).length;
+                      total = Math.max(Number(again?.total_count ?? again?.total_size ?? 0) || 0, againCount);
                     }
                     if (total >= KEY_LIMIT) {
                       const err = new Error(
-                        `该账号已有 ${total} 个 API Key（上限 ${KEY_LIMIT}）。请先到控制台删除一个，或改用“仅 API Key”登录。`,
+                        `该账号已有 ${total} 个 API Key（上限 ${KEY_LIMIT}）。请先到控制台删除一个，` +
+                          `或在 provider 设置里打开“自动清理旧 magpie API Key”后再登录，或改用“仅 API Key”登录。`,
                       );
                       err.code = "key_limit";
                       throw err;
@@ -371,7 +403,7 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
                     log("warn", `sensenova: 新 Key 校验没做完（${e?.message ?? e}）`);
                   }
 
-                  if (pruneOldKeys) await pruneKeys(access, keyName);
+                  if (pruneOldKeysOn()) await pruneKeys(access, keyName, apiKey.slice(-4), 0);
 
                   return {
                     type: "success",
@@ -432,9 +464,13 @@ export async function SenseNovaPlugin({ client, magpie } = {}, options = {}) {
             }
             const note = typeof inputs?.email === "string" ? inputs.email.trim() : "";
             // 关键安全修复：清理 inputs 并覆盖 metadata，防止宿主 save() 将 inputs 浅拷贝
-            // 进落盘的 metadata 导致明文 API Key 泄漏到 plugin-auth.json
-            if (inputs && typeof inputs === "object") {
-              delete inputs.apiKey;
+            // 进落盘的 metadata 导致明文 API Key 泄漏到 plugin-auth.json。
+            // delete 可能遇到冻结/密封对象（ESM 严格模式会抛 TypeError），失败也无妨——
+            // 下面的 metadata.apiKey: undefined 才是主防线（JSON 序列化会丢弃 undefined）。
+            try {
+              if (inputs && typeof inputs === "object") delete inputs.apiKey;
+            } catch {
+              /* 只读对象：交给 metadata 遮蔽 */
             }
             return {
               type: "success",

@@ -13,7 +13,7 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 | 模型调用 | `https://token.sensenova.cn/v1`（OpenAI 兼容 / Chat Completions） | 控制台的 **API Key** |
 | 积分额度 | `https://platform.sensenova.cn/…/tokenplan/pool-usage` | 控制台 **OAuth 登录令牌**（API Key 读不到额度） |
 
-所以登录时要两样东西：**API Key（粘贴）+ 控制台登录（浏览器点一下）**。
+所以**浏览器登录一次就把两样都拿到**：插件自动创建 API Key（模型用）+ 控制台 OAuth 令牌（额度用）。不想自动建 Key 才用“仅 API Key”的粘贴方式。
 
 ## 协议：我们用的是 Chat Completions
 
@@ -39,7 +39,7 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 
 ## 模型清单
 
-内置目录以[官网文档](https://platform.sensenova.cn/docs)为准；`GET /v1/models` 只用来覆盖上下文、输出上限、价格和描述。两者冲突时：**能力看文档，上限看接口**。
+内置目录以[官网文档](https://platform.sensenova.cn/docs)为准；`GET /v1/models` 用来覆盖上下文、输出上限与描述，能力取**文档 ∪ 接口**（live 只能补充文档没写的能力，不会推翻文档声明）。价格不读——Token Plan 按积分计费，不走美元价。
 
 | 官网名称 | Model ID | Chat | 输入 | 输出 | 上下文 | 最大输出 |
 |---|---|---|---|---|---|---|
@@ -72,7 +72,7 @@ SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模�
 magpie plugin add "<path-to-this-folder>"
 ```
 
-> ⚠️ **不要和 `aqiu817/magpie-sensenova`、`itgo067/magpie-plugin-sensenova` 同时启用**：三者都声明 provider id `sensenova`。magpie 会让其中一个服务该 provider；要换用本插件，先在插件页把另一个删掉，或用 `magpie plugin use` 指定。
+> ⚠️ **不要和 `aqiu817/magpie-sensenova`、`itgo067/magpie-plugin-sensenova` 同时启用**：三者都声明 provider id `sensenova`。magpie 会让其中一个服务该 provider；要换用本插件，在插件页失败一方的行上点 **Use for SenseNova**（或用 `magpie plugin use sensenova <插件名>`），无需先删除。
 
 ## 使用
 
@@ -124,9 +124,9 @@ bun scripts/key-gc.mjs          # 预览，不删
 bun scripts/key-gc.mjs --apply  # 删除旧的 magpie-*，保留最新 2 个
 ```
 
-脚本只删 `magpie-*`，永远保护当前账号正在用的 Key，也不会碰你手动创建的 `Key`。**默认 dry-run**；多机器使用同一账号时先看清单再 `--apply`。
+脚本默认只删**本机**的 `magpie-<host>-*`，永远保护当前账号正在用的 Key（按末 4 位匹配），也不会碰你手动创建的 `Key`。**默认 dry-run**；要连其他机器的 `magpie-*` 一起清，加 `--all-machines`。注意：保护依赖控制台 list 返回的 `api_key` 字段做末 4 位匹配（实测当前返回），若哪天不返回了，脚本会跳过该账号并给出提示。
 
-想让它自动跑：在 provider 设置页打开 **“自动清理旧 magpie API Key”**（`auth.options` 的 `prune_old_keys`，默认关闭）。打开后浏览器登录成功会保留最新 2 个同机器 `magpie-*`；手动 `Key` 不动。旧版本留下的无机器前缀的 Key 仍用上面的脚本清。
+想让它自动跑：在 provider 设置页打开 **“自动清理旧 magpie API Key”**（`auth.options` 的 `prune_old_keys`，默认关闭）。打开后浏览器登录成功会保留最新 2 个同机器 `magpie-*`，正在用的 Key 和手动 `Key` 不动；账号满 20 个 Key 时登录会先预清理腾位再创建。
 
 ## 429：先看边界
 
@@ -150,24 +150,27 @@ bun scripts/key-gc.mjs --apply  # 删除旧的 magpie-*，保留最新 2 个
 magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 ```
 
-`models=` 的顺序就是尝试顺序；routing 用你惯用的策略（`magpie group --help` 里有 `routing=` 的说明）。核心是“同 provider 内按模型降级”，不是把插件改成自动重试。
+`models=` 的顺序就是尝试顺序；routing 用你惯用的策略（`magpie group --help` 里有 `routing=` 的说明）。核心是“同 provider 内按模型降级”，不是把插件改成自动重试。也可以直接把 sensenova 供应商的路由设为下面的 **`magpie-sensenova/balanced`**——那是更根本的做法（组兜底 + 供应商内智能排序可以同时用）。
 
 插件**不会**在内部重试 429：那会阻塞 magpie 的换号/换模型。插件只提供 `auth.maxConcurrency: 1` 这个安全默认值；`maxRPM` 是 magpie 的 provider 设置，请在 provider 里改。
 
 ### 专属路由策略：`magpie-sensenova/balanced`
 
-插件自带一个 magpie **gateway 路由策略**（`gateway.mjs`），专为这 5 个账号设计。启用：**Providers → SenseNova → Routing → `magpie-sensenova/balanced`**（本仓库安装时已设）。分组保持你自己的路由即可——只要供应商的路由与分组不同，magpie 就会在分组调用商汤时保留它（`ownRouting`）。
+插件自带一个 magpie **gateway 路由策略**（`gateway.mjs`），专为这 5 个账号设计。启用：**Providers → SenseNova → Routing → `magpie-sensenova/balanced`**（安装后需手动设置一次）。分组保持你自己的路由即可——只要供应商的路由与分组不同，magpie 就会在分组调用商汤时保留它（`ownRouting`）。**不要**把它设在混合供应商的分组上：那会让分组退化为“按成员表顺序逐家尝试”。
+
+验证已生效：`magpie plugin` 的 sensenova 行应显示 `gateway middleware  routings magpie-sensenova/balanced`，且无加载错误；Routing 页的 trace 会显示请求按策略排序后的账号顺序。
 
 它替代盲目轮询，按下面的顺序挑账号：
 
 | 优先级 | 规则 | 依据 |
 |---|---|---|
-| 1 | 正在休息（刚 429）的账号排最后；休息结束后 **2 分钟冷却**内仍排健康账号之后 | 受控实测：上游 429 状态常持续数分钟，比 magpie 的一分钟休息久 |
-| 2 | 已用额度百分比少的优先 | 把 5 个账号的 5h/7d 窗口用匀，避免先打满一个 |
-| 3 | 额度相近时，最近一小时 token 少的优先 | 避免连续把大请求压给同一账号（同账号高 RPS 直接 `rps exhausted`） |
-| 4 | 全部相同则按池内轮转起步 | 不让"永远第一个"吃掉所有流量 |
+| 1 | 正在休息（刚 429）的账号排最后；休息结束后 **2 分钟冷却**内仍排健康账号之后（冷却从“本次休息回合首次被观察到”起算，休息期间不重复计时） | 受控实测：上游 429 状态常持续数分钟，比 magpie 的一分钟休息久 |
+| 2 | 已用额度少的优先（按 0.5 个百分点分档）；额度未知的账号视同已用 60%，不会排最前 | 把 5 个账号的 5h/7d 窗口用匀，避免先打满一个；额度读取失败时不至于被打爆 |
+| 3 | 同档额度时，窗口将在 1 小时内重置的优先 | 把快过期的额度用掉，不浪费 |
+| 4 | 同档时，最近一小时 token 少的优先 | 避免连续把大请求压给同一账号（同账号高 RPS 直接 `rps exhausted`） |
+| 5 | 全部相同则按池内轮转起步 | 不让"永远第一个"吃掉所有流量 |
 
-边界要说清楚：它**只排序，不发请求、不重试**，也不改变 magpie 的 429 重试/休息逻辑；上游傍晚高峰的全局拥塞它救不了（那要靠分组兜底和错峰）。用于分组时它保留成员表的供应商顺序，只在每个供应商内部做智能排序；策略抛错/超时 magpie 一律回退原顺序（fail open）。路由名按安装方式而异：本机路径安装是 `magpie-sensenova/balanced`，npm 包安装是 `magpie-sensenova-token-plan/balanced`。
+边界要说清楚：它**只排序，不发请求、不重试**，也不改变 magpie 的 429 重试/休息逻辑；上游傍晚高峰的全局拥塞它救不了（那要靠分组兜底和错峰）。策略抛错/超时 magpie 一律回退原顺序（fail open）。路由名按安装方式而异：本机路径安装是 `magpie-sensenova/balanced`，npm 包安装是 `magpie-sensenova-token-plan/balanced`。
 
 ## 凭据与安全
 
@@ -176,7 +179,7 @@ magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 - `refresh_token` / `access_token` / API Key 落盘前经 **Windows DPAPI**（`CryptProtectData`）密封，形状是 `dpapi:<base64>`：
   - 只有**当前 Windows 用户**能解开；拷走 `plugin-auth.json` 到别的机器/用户都解不开；
   - 换机器或换 Windows 用户后，账号需要重新登录一次（这是特性，不是 bug）。
-- 登录用的一次性浏览器实例：独立临时 profile（`%TEMP%` 下），与日常浏览器完全隔离，收尾时整个目录删除。浏览器自身的后台联网也关了（`--disable-background-networking` / `--disable-component-update` / `--disable-sync` / `--disable-default-apps` / `--no-service-autorun` / `--disable-breakpad` / `--no-pings`）。
+- 登录用的一次性浏览器实例：独立临时 profile（`%TEMP%` 下的 `magpie-sensenova-login-*`），与日常浏览器完全隔离，收尾时整个目录删除；万一删除失败（文件锁），这些目录可以安全手动删。浏览器自身的后台联网也关了（`--disable-background-networking` / `--disable-component-update` / `--disable-sync` / `--disable-default-apps` / `--no-service-autorun` / `--disable-breakpad` / `--no-pings`）。
 - 插件当前只与两个厂商域名通信：
   - `platform.sensenova.cn`：授权、令牌、额度；
   - `token.sensenova.cn`：模型。
@@ -199,6 +202,7 @@ cd "<path-to-this-folder>"
 
 bun test/unit.test.mjs          # 离线单测：PKCE / 授权URL / 额度映射 / 模型 / DPAPI / 入口解析
 bun test/signin-flow.test.mjs   # 端到端签入（打桩浏览器与网络）：账号记录形状 + 四个钩子的请求
+bun test/gateway.test.mjs       # 网关路由策略 balanced 的排序语义（15 个用例）
 bun test/smoke-capture.mjs      # 浏览器截停留烟测：本地回环复刻"授权→302→回调"，不联网
 SMOKE_HEADFUL=1 bun test/smoke-capture.mjs   # 同上，但用可见窗口跑（会闪一下）
 
@@ -223,9 +227,10 @@ pwsh -File scripts/try.ps1 -Clean          # 同上，结束删除沙箱
 | 现象 | 原因 / 办法 |
 |---|---|
 | "没有找到 Microsoft Edge 或 Chrome" | 装 Edge，或设 `MAGPIE_SENSENOVA_BROWSER=C:\path\to\msedge.exe`，或在插件 options 里写 `"browser": "…"` |
+| 指定了 `browser`/`MAGPIE_SENSENOVA_BROWSER` 但还想自动换浏览器 | 指定路径时**不做**候选回退（路径不存在直接报错）；想回退就清掉这个设置 |
 | 登录窗口不弹 | 看 magpie 日志里 `[sensenova]` 开头的行（`client.app.log`） |
 | 浏览器里登录完成但 magpie 说超时 | 登录预算 8 分钟（可 `options.loginTimeoutMs` 调大）；中途关窗会立即失败 |
-| 登录成功但提示自动创建 API Key 失败 | 账号可能已有 20 个 Key；去控制台删一个，或改用“仅 API Key”。错误里会带控制台的原始说明 |
+| 登录成功但提示自动创建 API Key 失败 | 账号可能已有 20 个 Key；去控制台删一个、在 provider 设置里打开“自动清理旧 magpie API Key”后再登录，或改用“仅 API Key”。错误里会带控制台的原始说明 |
 | 自动创建的 Key 没通过校验 | 新 Key 通常要 3–10 秒生效，插件会自动重试；超过约 15 秒仍 401 才会失败。失败时插件会尝试删掉这个 Key，也可以去控制台手动删 |
 | "API Key 被拒绝" | 粘贴不完整，或这个 Key 不属于 Token Plan；控制台重新生成 |
 | 额度显示"控制台会话已失效" | 令牌被平台吊销——重新登录一次 |

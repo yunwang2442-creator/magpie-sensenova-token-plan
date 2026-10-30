@@ -62,9 +62,24 @@ expect(listed?.[Symbol.for("magpie.fellBack")] === true, "无 auth 时 provider.
 expect(Object.keys(listed ?? {}).length === 7, "无 auth 时仍声明 7 个模型");
 expect(listed?.["sensenova-u1.5-lite"]?.modalities?.output?.[0] === "image", "U1.5 输出 image");
 
+// gateway 策略（magpie gateway middleware 契约）
+const { strategies } = await import("../gateway.mjs");
+expect(typeof strategies?.balanced === "function", "gateway strategies.balanced 可用");
+const sample = [
+  { key: "s@a", account: true, known: true, used: 0, soon: [], pace: 0, weight: 1, resting: false, tokens: 0 },
+  { key: "s@b", account: true, known: true, used: 10, soon: [], pace: 0, weight: 1, resting: false, tokens: 0 },
+  { key: "s@c", account: true, known: true, used: 10, soon: [], pace: 0, weight: 1, resting: true, tokens: 0 },
+];
+const ord = strategies.balanced("check-shape", sample);
+expect(
+  Array.isArray(ord) && [...ord].sort((x, y) => x - y).join(",") === "0,1,2",
+  "balanced 对样例 seats 返回合法排列",
+);
+expect(ord[ord.length - 1] === 2, "balanced 把 resting 的 seat 排最后");
+
 if (problems.length) {
   console.error(`✗ ${problems.length} 个问题`);
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
 }
-console.log("✓ 插件形状正常：config / provider.models / auth(oauth+api) / loader / usage / refresh");
+console.log("✓ 插件形状正常：config / provider.models / auth(oauth+api) / loader / usage / refresh / gateway.balanced");

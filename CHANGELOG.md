@@ -2,6 +2,51 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.8.1] - 2026-10-30
+
+### 修复（四路子代理审计的直接产出）
+
+**gateway.mjs（路由策略）**
+- **“token 负载避让”实际是死代码**：magpie 下发的 `used` 带长小数，几乎不可能精确相等，导致 tokens 比较永远轮不到。现在按 0.5 个百分点量化分档，同档内 token 避让才生效。
+- **额度未知（`known=false`）的账号被当 0% 永远排最前**：额度读取失败时流量会持续打到读不到额度的账号。现在视同已用 60% 的中性偏后档。
+- **冷却起点被连续调用刷新**：休息期间每次调用都重置计时，magpie 休息越久我们额外压得越久。现在按“休息回合”记账，冷却从回合首次被观察到起算。
+- **稀疏数组/带洞数组直接抛 TypeError**：`seats.map` 保留洞。现在用 `Array.from` 归一。
+- **忽略 `soon`，窗口快重置的额度被留到过期**：同档额度时，1 小时内重置的账号优先。
+- `lastRest`/`turns` 的清理护栏改为周期性无条件清扫 + `turns` 容量上限。
+
+**index.mjs（Key 生命周期 / 登录）**
+- **满 20 Key 预清理是“先删后建”非事务**：创建失败时 Key 已被删光。现在预清理保留最新 2 个（含正在使用的），创建失败账号仍可用。
+- **`pruneKeys` 可能删掉正在用的 Key**：现在按末 4 位对 `api_key` 加保护；`create_time` 不可解析的 Key 一律跳过不删（新旧无法判定，宁可留着）。
+- **KEY_LIMIT 守卫只认 `total_count` 字段名**：字段缺失/改名时静默失效。现在 `pageSize: 20` + `api_keys` 长度兜底；满额报错文案补“打开自动清理可自救”。
+- **`delete inputs.apiKey` 在冻结/密封对象上抛 TypeError**，api 登录整体中断。现在 try/catch 包裹（metadata 遮蔽仍是主防线）。
+- **`provider.models({models:{}})` 返回 0 个模型**：现在空 declared 回退到内置清单。
+- `prune_old_keys` 开关改为惰性读取，设置页切换后无需重载插件。
+
+**lib/models.mjs（模型清单）**
+- **`created` 越界抛 RangeError，一条坏记录吞掉整个 `/models` 活清单**（静默回退兜底）。现在年份夹在 2000–2200，超界放弃；`extractModels` 单条 try/catch，坏记录只丢自己。
+
+**lib/browser.mjs（登录浏览器）**
+- **`cmd /c rmdir` 的 cmd 元字符拆分**：路径含 `&`/`^` 等时会删错目录、留下含登录态的 profile，甚至执行额外命令。现在路径含元字符时改走 `rmSync`（该分支无 CDP 会话，无 Bun 崩溃风险）。
+- 启动失败分支的 profile 清理从 fire-and-forget 改为 `await`。
+- `MAGPIE_SENSENOVA_BROWSER` 指向不存在的路径时现在会日志提示（此前静默忽略）。
+
+**scripts/key-gc.mjs**
+- **跨机器误删**：默认只匹配本机 `magpie-<host>-*`；`--all-machines` 才放宽到所有 `magpie-*`。头部过时注释已更正；缺 `id` 的行跳过；`--apply` 时若正在用的 Key 匹配不到 `api_key` 字段则跳过该账号并提示。
+
+**契约自检**
+- `scripts/check-shape.mjs` 补 gateway `strategies.balanced` 形状检查（排列 + resting 置底）。
+
+### 文档
+
+- README：登录旧框架、“价格覆盖”不实声明、Key 保护口径、路由策略边界（不要设在混合分组）与验证方式、`Use for SenseNova` 切换按钮、指定浏览器不做候选回退、临时 profile 可手删、自测清单补 gateway。
+- BLUEPRINT：非目标与 v0.8.0 自相矛盾一句、DeepSeek 输出上限过期、额度口径过期、“私有稳定版”版本号。
+- `upstream-issue-draft.md` 加旧口径数字警示。
+
+### 测试
+
+- gateway 用例 10 → **15**（新增：量化分档、renewSoon、known、稀疏/重复/NaN/Infinity、5000 seat 性能上限）。
+- 现状：**24 单测 + 12 端到端 + 15 网关 + 3 烟测**；`check-shape` 覆盖 gateway 形状。
+
 ## [0.8.0] - 2026-10-30
 
 ### 新增
