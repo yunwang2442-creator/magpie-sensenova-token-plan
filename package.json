@@ -1,6 +1,6 @@
 {
   "name": "magpie-sensenova-token-plan",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "private": true,
   "description": "SenseNova（商量/日日新）Token Plan 供应商插件：Chat Completions 模型 + 控制台积分额度，浏览器登录，凭据 DPAPI 密封",
   "type": "module",
@@ -9,6 +9,7 @@
     ".": "./index.mjs"
   },
   "files": [
+    "gateway.mjs",
     "index.mjs",
     "lib/",
     "README.md",
@@ -37,6 +38,7 @@
     "url": "https://github.com/yunwang2442-creator/magpie-sensenova-token-plan/issues"
   },
   "magpie": {
+    "gateway": "./gateway.mjs",
     "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEEAAABBCAYAAACO98lFAAAACXBIWXMAABYlAAAWJQFJUiTwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAEDSURBVHgB7dqxTUNBFAXR8Qos10AEGSBRDhHFYIqBFBJEajogwSJ0QA0k4L/43xreBpZmSjjSbnD1FnfXX50j6XF7uWBADRNhTgRESCIgQhIBEZIIiJBEQIQkAiIkERAhiYAISQRESCeMqLPpi/5Occvf1zXFTbTNEIQZ4Gl7taa4ZXsrX8bbNPkc5kRAhCQCIiQRECGJgAhJBERIIiBCEgERkgiIkERAhDRvjDuK+zn7Y/X5fE5xq+8Bk+hhYxxyJptVuLV7iru9uaC6Tn/wOeCfkERAhCQCIiQRECGJgAhJBERIIiBCEgERkgiIkERAhDTmorWfvtD3O4o7jKLUt//4Bz5ELFg8/txXAAAAAElFTkSuQmCC",
     "maxConcurrency": 1
   }

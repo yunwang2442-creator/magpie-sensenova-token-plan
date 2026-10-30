@@ -1,11 +1,11 @@
 # magpie-sensenova 蓝图
 
-> 状态：v0.7.0 = 私有稳定版（不公开则到此为止）；V1.0 发布版是可选分支，不是阻塞。
+> 状态：v0.8.0 = 私有稳定版 + 专属网关路由策略（不公开则到此为止）；V1.0 发布版是可选分支，不是阻塞。
 
-## 0. 当前进度（v0.7.0）
+## 0. 当前进度（v0.8.0）
 
-- **已完成**：模型目录（聊天 + 图像）、额度语义、按账号模型缓存、协议 variants、稳定账号身份、keyless、浏览器登录 `url:""`、403 kept、Key 清理脚本、额度合计脚本、形状自检。
-- **现在能做**：`try.ps1` 沙箱、自动 Key prune（需先决定是否开启）、host-scoped Key 名、18/20 警告。
+- **已完成**：模型目录（聊天 + 图像）、额度语义（含 Flash-Lite `notModels` 路由隔离）、按账号模型缓存、协议 variants、稳定账号身份、keyless、浏览器登录 `url:""`、403 kept、Key 清理（脚本 + 可选自动 prune + 满额自救）、Key 明文防泄漏、浏览器多候选回退、额度合计脚本、形状自检。
+- **v0.8.0 新增**：magpie gateway 路由策略 `magpie-sensenova/balanced`（健康/额度/负载排序 + 轮转 tie-break，分组内保留成员顺序）；受控实验确认 429 按账号持续数分钟、单账号有 RPS 闸。
 - **上游阻塞**：自定义额度页——`PageReads` 只有 `usage:summary` / `providers:list`，没有 `usage:quotas`；跨账号合计先用 `scripts/quota-total.mjs`。
 - **发布前**：`private`/`files`/NOTICE/第三方署名、英文 README、CI、npm/topic。
 

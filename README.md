@@ -154,6 +154,21 @@ magpie group add coding models=sensenova/kimi-k3,sensenova/deepseek-flash
 
 插件**不会**在内部重试 429：那会阻塞 magpie 的换号/换模型。插件只提供 `auth.maxConcurrency: 1` 这个安全默认值；`maxRPM` 是 magpie 的 provider 设置，请在 provider 里改。
 
+### 专属路由策略：`magpie-sensenova/balanced`
+
+插件自带一个 magpie **gateway 路由策略**（`gateway.mjs`），专为这 5 个账号设计。启用：**Providers → SenseNova → Routing → `magpie-sensenova/balanced`**（本仓库安装时已设）。分组保持你自己的路由即可——只要供应商的路由与分组不同，magpie 就会在分组调用商汤时保留它（`ownRouting`）。
+
+它替代盲目轮询，按下面的顺序挑账号：
+
+| 优先级 | 规则 | 依据 |
+|---|---|---|
+| 1 | 正在休息（刚 429）的账号排最后；休息结束后 **2 分钟冷却**内仍排健康账号之后 | 受控实测：上游 429 状态常持续数分钟，比 magpie 的一分钟休息久 |
+| 2 | 已用额度百分比少的优先 | 把 5 个账号的 5h/7d 窗口用匀，避免先打满一个 |
+| 3 | 额度相近时，最近一小时 token 少的优先 | 避免连续把大请求压给同一账号（同账号高 RPS 直接 `rps exhausted`） |
+| 4 | 全部相同则按池内轮转起步 | 不让"永远第一个"吃掉所有流量 |
+
+边界要说清楚：它**只排序，不发请求、不重试**，也不改变 magpie 的 429 重试/休息逻辑；上游傍晚高峰的全局拥塞它救不了（那要靠分组兜底和错峰）。用于分组时它保留成员表的供应商顺序，只在每个供应商内部做智能排序；策略抛错/超时 magpie 一律回退原顺序（fail open）。路由名按安装方式而异：本机路径安装是 `magpie-sensenova/balanced`，npm 包安装是 `magpie-sensenova-token-plan/balanced`。
+
 ## 凭据与安全
 
 - **不存账号密码**。浏览器登录是你和商汤之间的直连，插件不接触密码。
@@ -235,6 +250,7 @@ pwsh -File scripts/try.ps1 -Clean          # 同上，结束删除沙箱
 
 ```
 index.mjs              插件入口（只导出一个函数，magpie/OpenCode 都接受）
+gateway.mjs            magpie 网关路由策略（balanced：健康/额度/负载排序）
 lib/protocol.mjs       协议常量与请求（PKCE 参数、请求头、换码/续期/额度）
 lib/pkce.mjs           PKCE 码对与 state
 lib/browser.mjs        受控浏览器登录（CDP Fetch 截停回跳导航）
@@ -248,6 +264,7 @@ scripts/quota-total.mjs 多账号额度合计
 scripts/key-gc.mjs      Token Plan Key 清理（默认 dry-run）
 scripts/try.ps1         Windows 沙箱加载插件
 test/unit.test.mjs     离线单测
+test/gateway.test.mjs  网关路由策略排序语义
 test/signin-flow.test.mjs  端到端签入（打桩浏览器与网络）
 test/smoke-capture.mjs 浏览器截停留烟测（本地回环，不联网）
 CONTEXT.md             领域术语表
