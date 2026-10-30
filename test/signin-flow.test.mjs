@@ -77,7 +77,11 @@ globalThis.fetch = async (url, init = {}) => {
       const body = JSON.parse(String(init.body ?? "{}"));
       return jsonRes({ api_key_plain: "sk-created", id: "key-1", displayname: body.displayname, key_type: body.key_type });
     }
-    if (init.method === "DELETE") return new Response("", { status: 204 });
+    if (init.method === "DELETE") {
+      const id = u.split("/").pop();
+      keyList = keyList.filter((k) => k.id !== id);
+      return new Response("", { status: 204 });
+    }
     return jsonRes({ api_keys: keyList, total_count: keyList.length || 1 });
   }
   if (u === TOKEN_URL) {
@@ -156,12 +160,21 @@ await check("loader：解出 API Key 交给宿主（宿主据此拼 Authorizatio
   assert.equal(loaded.apiKey, "sk-created");
 });
 
-await check("api 方法：只校验/密封 Key，不打开浏览器", async () => {
-  const s = await plugin.auth.methods[1].authorize({ apiKey: "  Bearer sk-api  ", email: "note" });
+await check("api 方法：只校验/密封 Key，不打开浏览器，并防止宿主明文落盘", async () => {
+  const inputs = { apiKey: "  Bearer sk-api  ", email: "note" };
+  const s = await plugin.auth.methods[1].authorize(inputs);
   assert.equal(s.type, "success");
   assert.equal(await unseal(s.key), "sk-api");
   assert.ok(s.key === "sk-api" || s.key.startsWith("dpapi:"), "Windows 上应密封");
   assert.equal(s.metadata.email, "note", "账号备注要落进 metadata.email");
+  assert.equal(inputs.apiKey, undefined, "传入对象的明文 apiKey 必须被清除");
+  assert.equal(s.metadata.apiKey, undefined, "metadata.apiKey 必须遮蔽为 undefined");
+
+  // 严格模拟宿主 host.js 的 save() 行为：验证 JSON 落盘后绝对不含明文 Key
+  const hostMergedMd = { ...(inputs && Object.keys(inputs).length ? inputs : {}), ...(s.metadata ?? {}) };
+  const savedRecord = { type: "api", key: s.key, ...(Object.keys(hostMergedMd).length ? { metadata: hostMergedMd } : {}) };
+  const jsonStr = JSON.stringify(savedRecord);
+  assert.ok(!jsonStr.includes("sk-api"), "落盘的 JSON 绝不能包含明文 API Key");
 
   const noNote = await plugin.auth.methods[1].authorize({ apiKey: "sk-api" });
   assert.match(noNote.metadata.email, /^key:[0-9a-f]{12}$/, "没填备注时用稳定 Key 指纹");
@@ -192,6 +205,39 @@ await check("key lifecycle：prune_old_keys 只删旧的同机 magpie- Key", asy
   assert.ok(deletes.some((c) => c.url.endsWith("/old3")), "old3 should be deleted");
   assert.ok(!deletes.some((c) => c.url.endsWith("/old2")), "old2 should be kept");
   assert.ok(!deletes.some((c) => c.url.endsWith("/old1")), "old1 should be kept");
+  keyList = [];
+});
+
+await check("key lifecycle：满 20 个 Key 时未开 prune 报错，开启 prune 自动预清理自救成功", async () => {
+  const tag = keyFingerprint(hostname()).slice(0, 4);
+  // 构造 20 个已有 Key：2 个本机旧 Key + 18 个其他 Key
+  keyList = [
+    { id: "my-old-2", displayname: `magpie-${tag}-2`, create_time: "2026-10-28T00:00:00Z" },
+    { id: "my-old-1", displayname: `magpie-${tag}-1`, create_time: "2026-10-28T01:00:00Z" },
+    ...Array.from({ length: 18 }, (_, i) => ({
+      id: `other-${i}`,
+      displayname: `Key-${i}`,
+      create_time: "2026-10-27T00:00:00Z",
+    })),
+  ];
+  assert.equal(keyList.length, 20);
+
+  // 1) 未开启 prune_old_keys：应明确抛出 key_limit 错误
+  const normalPlugin = await SenseNovaPlugin({ client: { app: { log: () => {} } } }, {});
+  const failRes = await normalPlugin.auth.methods[0].authorize().then((s) => s.callback());
+  assert.equal(failRes.type, "failed");
+  assert.match(failRes.error, /已有 20 个 API Key/);
+
+  // 2) 开启 prune_old_keys：先执行创建前预清理，删掉旧的 my-old-2，成功创建新 Key！
+  const autoPlugin = await SenseNovaPlugin(
+    {
+      client: { app: { log: () => {} } },
+      magpie: { option: (_id, key) => key === "prune_old_keys" },
+    },
+    {},
+  );
+  const okRes = await autoPlugin.auth.methods[0].authorize().then((s) => s.callback());
+  assert.equal(okRes.type, "success", "满 20 个时开启自动清理应自救成功");
   keyList = [];
 });
 

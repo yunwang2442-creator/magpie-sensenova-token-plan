@@ -2,6 +2,19 @@
 
 所有重要变更都记在这里。版本号遵循语义化版本。
 
+## [0.7.3] - 2026-10-30
+
+### 安全修复
+
+- **防止宿主浅拷贝导致 API Key 明文落盘**：`api` 登录方式下，magpie 宿主的 `save()` 会将 `inputs` 中的全部字段浅拷贝进 `metadata`，导致明文 API Key 留在 `plugin-auth.json` 的 `metadata.apiKey` 中。现已在 `authorize` 中清除 `inputs.apiKey` 并在 `metadata` 中显式遮蔽为 `undefined`，彻底消除明文落盘风险。
+
+### 修复
+
+- **Key 上限自救（解决死锁）**：此前若账号已有 20 个 Key，且开启了 `prune_old_keys`，登录流程在 `createApiKey` 之前会因 `total >= KEY_LIMIT` 直接抛错终止，导致自动清理永远无法执行。现在检测到满额时若开启了自动清理，会先执行一次前置预清理（删除旧的同机 `magpie-*` Key），腾出配额后再创建，彻底解除满额死锁。
+- **浏览器容错回退**：`startLoginCapture` 在首选浏览器（Edge）启动失败或调试端口无响应时，自动尝试本机安装的其他 Chromium 浏览器（如 Chrome），提升复杂 Windows 环境与策略拦截下的登录成功率。
+- **专属池识别双保险**：`isDedicated` 在判断 `pool_type` 之余，同时匹配 `pool.name` 是否包含 "Flash" 或 "专属"，防止商汤接口字段微调时丢失专属池归属。
+- **`protocol-test.mjs`**：新增 `--all` 参数，可一次性遍历测试全部 5 个账号的 Chat / Anthropic / Responses 协议连通性。
+
 ## [0.7.2] - 2026-10-29
 
 ### 修复

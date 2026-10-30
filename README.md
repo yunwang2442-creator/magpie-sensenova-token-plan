@@ -192,6 +192,7 @@ bun scripts/login-test.mjs sk-你的APIKey  # 顺带列出 Token Plan 现有模�
 
 bun scripts/check-shape.mjs               # 不联网：检查 config/provider.models/auth/loader/usage/refresh 形状
 bun scripts/protocol-test.mjs             # 真实账号各发一个 max_tokens=1：Chat / Anthropic / Responses
+bun scripts/protocol-test.mjs --all       # 一次性测试全部账号
 bun scripts/protocol-test.mjs --account 3 --protocol anthropic
 bun scripts/quota-total.mjs               # 5 个账号按窗口合计（调用 magpie quota --json）
 bun scripts/quota-total.mjs --json        # 机器可读

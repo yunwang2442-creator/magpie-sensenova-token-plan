@@ -3,6 +3,7 @@
  * 协议烟测：用真实账号给 Chat / Anthropic Messages / Responses 各发一个最小请求。
  *
  *   bun scripts/protocol-test.mjs
+ *   bun scripts/protocol-test.mjs --all
  *   bun scripts/protocol-test.mjs --account 3 --model deepseek-flash
  *   bun scripts/protocol-test.mjs --protocol anthropic
  *   bun scripts/protocol-test.mjs --json
@@ -21,6 +22,7 @@ const arg = (name, fallback = "") => {
   return i >= 0 ? String(argv[i + 1] ?? fallback) : fallback;
 };
 const asJson = argv.includes("--json");
+const testAll = argv.includes("--all");
 const model = arg("model", "deepseek-flash");
 const accountArg = Number(arg("account", "1"));
 const protocolArg = arg("protocol", "all");
@@ -31,10 +33,10 @@ const auth = JSON.parse(readFileSync(authPath, "utf8"));
 const entries = Object.entries(auth).filter(([key]) => key.startsWith("sensenova"));
 const picked = entries
   .map(([key, record], i) => ({ key, record, index: i + 1 }))
-  .filter((x) => x.index === accountArg);
+  .filter((x) => testAll || x.index === accountArg);
 
 if (!picked.length) {
-  console.error(`没有第 ${accountArg} 个 sensenova 账号`);
+  console.error(`没有找到匹配的 sensenova 账号（account=${accountArg}）`);
   process.exit(1);
 }
 

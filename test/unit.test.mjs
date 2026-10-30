@@ -17,6 +17,7 @@ import {
   refreshForm,
   usernameFromTokens,
 } from "../lib/protocol.mjs";
+import { browserCandidates, findBrowser } from "../lib/browser.mjs";
 import { compact, flexNum, toUsage } from "../lib/quota.mjs";
 import { catalogModels, chatModels, createCatalog, extractModels, fellBack, isImageModel, normalizeModel, toConfigModel, toProviderModel } from "../lib/models.mjs";
 import { isSealed, seal, unseal } from "../lib/dpapi.mjs";
@@ -241,12 +242,31 @@ test("额度映射：顶层 pools、model_ids 与缺字段的宽容", () => {
   assert.equal(usage.windows[0].model, undefined);
   assert.equal(usage.windows[0].amount, 5);
   assert.equal(usage.windows[0].used, 50);
+
+  // 双保险：pool_type 为空时，若 name 包含“专属”或“Flash”，仍能识别为专属池
+  const byName = toUsage({
+    pools: [
+      {
+        name: "Flash-Lite积分池",
+        pool_type: "",
+        window_5h: { limit: 10, remaining: 5, reset_at: 1000000000 },
+      },
+    ],
+  });
+  assert.equal(byName.windows[0].model, "flash-lite", "name 包含 Flash-Lite 时能双保险识别");
 });
 
 test("额度映射：异常响应直接报错（账号卡片显示原因，而不是空）", () => {
   assert.throws(() => toUsage({}), /额度响应/);
   assert.throws(() => toUsage({ error: { message: "token 无效" } }), /token 无效/);
   assert.throws(() => toUsage({ pools: [{ name: "x", pool_type: "default" }] }), /没有可识别的窗口/);
+});
+
+test("浏览器候选：找到首选与去重候选列表", () => {
+  const list = browserCandidates();
+  assert.ok(list.length >= 1, "必须至少找到一个候选浏览器（Edge 或 Chrome）");
+  assert.equal(findBrowser(), list[0], "findBrowser 应返回候选列表首项");
+  assert.equal(new Set(list).size, list.length, "候选列表不应有重复项");
 });
 
 test("数值格式：千分位与两位小数", () => {
