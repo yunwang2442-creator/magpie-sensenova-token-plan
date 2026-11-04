@@ -2,7 +2,9 @@
 
 SenseNova（商量 / 日日新）Token Plan 的 magpie 供应商插件：**模型调用 + 控制台积分额度，一次浏览器登录全拿到**。
 
-> 当前状态：私有维护、按发布标准整理。没有发布到 npm，也没有挂 GitHub topic；安装方式是把本文件夹交给 magpie。
+> **已归档（2026-11-05）**：本插件已被官方包
+> [`@magpie-community/opencode-sensenova-auth`](https://github.com/magpie-community/plugins/tree/main/packages/sensenova)
+> **0.2.0** 取代，本仓库不再维护。迁移说明与差异见 [ARCHIVED.md](ARCHIVED.md)。
 
 ## 它解决什么
 
